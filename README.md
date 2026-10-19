@@ -6,6 +6,10 @@
 
 ## Скачать и запустить
 
+[**Скачать готовую сборку для Windows x64 (ZIP)**](https://github.com/lemeschenkoartem/kushat/raw/refs/heads/downloads/Kushat-reference-win-x64.zip)
+
+Архив размещён в отдельной ветке `downloads`; рядом находится `SHA256SUMS`.
+
 Распакуйте `Kushat-reference-win-x64.zip` и запустите `Kushat.exe` на Windows 10 22H2 / Windows 11 x64.
 Это автономная сборка: отдельно устанавливать .NET не требуется.
 
