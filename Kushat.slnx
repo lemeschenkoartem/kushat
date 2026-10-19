@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kushat.Core/Kushat.Core.csproj" />
+    <Project Path="src/Kushat.App/Kushat.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kushat.Core.Tests/Kushat.Core.Tests.csproj" />
+  </Folder>
+</Solution>
