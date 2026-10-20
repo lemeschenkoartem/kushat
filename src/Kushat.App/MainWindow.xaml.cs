@@ -81,7 +81,7 @@ public partial class MainWindow : Window
             if (ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden })
                 ClearSession();
             var reason = ex is HttpRequestException { StatusCode: null } or IOException
-                ? "Ошибка связи или TLS. Проверьте доступность реф-сервера, порт и сертификат." : ex.Message;
+                ? "Ошибка связи. Проверьте адрес, порт и протокол HTTP/HTTPS. Для HTTPS также проверьте сертификат." : ex.Message;
             StatusText.Text = "Товары не обновлены. " + reason;
             ShowError(StatusText.Text);
         }

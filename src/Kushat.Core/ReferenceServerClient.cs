@@ -7,7 +7,7 @@ using System.Xml.Linq;
 
 namespace Kushat.Core;
 
-/// <summary>Reads RK7 references through its built-in XML interface, without WSA2 or SQL.</summary>
+/// <summary>Reads RK7 references over HTTP or HTTPS through its XML interface, without WSA2 or SQL.</summary>
 public sealed class ReferenceServerClient(HttpClient http)
 {
     private const int MaxResponseBytes = 16 * 1024 * 1024;

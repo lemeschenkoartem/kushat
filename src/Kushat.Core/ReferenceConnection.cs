@@ -11,11 +11,11 @@ public sealed class ReferenceConnection
     {
         var address = ServerAddress?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("Укажите адрес реф-сервера и порт XML-интерфейса.");
-        if (!address.Contains("://", StringComparison.Ordinal)) address = "https://" + address;
-        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
+        if (!address.Contains("://", StringComparison.Ordinal)) address = "http://" + address;
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
             !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
             (uri.AbsolutePath != "/" && uri.AbsolutePath != "/rk7api/v0/xmlinterface.xml"))
-            throw new ArgumentException("Укажите HTTPS-адрес сервера с портом, например https://server:порт. Пароль вводится отдельно.");
+            throw new ArgumentException("Укажите HTTP- или HTTPS-адрес сервера с портом, например http://server:порт. Пароль вводится отдельно.");
         if (string.IsNullOrWhiteSpace(UserName) || UserName.Contains(':') || UserName.Any(char.IsControl))
             throw new ArgumentException("Укажите логин сотрудника без двоеточий и управляющих символов.");
         if (TimeoutSeconds is < 1 or > 300) throw new ArgumentException("Таймаут должен быть от 1 до 300 секунд.");

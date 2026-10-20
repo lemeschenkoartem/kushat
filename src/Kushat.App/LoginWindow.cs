@@ -18,13 +18,13 @@ public sealed class LoginWindow : Window
         ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new StackPanel { Margin = new Thickness(28) };
         panel.Children.Add(new TextBlock { Text = "Подключение к реф-серверу", FontSize = 23, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 20) });
-        var address = new TextBox { Text = saved.ServerAddress, ToolTip = "HTTPS-адрес и порт XML-интерфейса R-Keeper" };
+        var address = new TextBox { Text = saved.ServerAddress, ToolTip = "Адрес XML-интерфейса R-Keeper: http://сервер:порт или https://сервер:порт. Без протокола используется HTTP." };
         AddField(panel, "Адрес сервера с портом", address);
         var login = new TextBox { Text = saved.UserName };
         AddField(panel, "Логин сотрудника", login);
         var password = new PasswordBox { Padding = new Thickness(8), MinHeight = 34 };
         AddField(panel, "Пароль", password);
-        panel.Children.Add(new TextBlock { Text = "Используется встроенный XML-интерфейс R-Keeper. Порт указывает администратор сервера. Пароль не сохраняется.",
+        panel.Children.Add(new TextBlock { Text = "Для локального подключения можно указать http://сервер:порт. Без протокола используется HTTP. Порт указывает администратор сервера. Пароль не сохраняется.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 16), Foreground = System.Windows.Media.Brushes.DimGray });
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) };
         panel.Children.Add(status);
@@ -57,7 +57,7 @@ public sealed class LoginWindow : Window
             catch (Exception ex) when (ex is HttpRequestException or System.IO.IOException or FormatException or ArgumentException)
             {
                 status.Text = ex is HttpRequestException { StatusCode: null } or System.IO.IOException
-                    ? "Не удалось связаться с сервером. Проверьте адрес, порт XML-интерфейса и доверие сертификату."
+                    ? "Не удалось связаться с сервером. Проверьте адрес, порт и выбранный протокол HTTP/HTTPS. Для HTTPS также проверьте сертификат."
                     : ex.Message;
                 password.Clear(); password.Focus();
             }

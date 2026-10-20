@@ -15,7 +15,10 @@ public class ReferenceServerTests
     private static readonly string Menu = Response("<Item Ident=\"100\" Name=\"Оливье\" PRICETYPES-3=\"850.55\" PRICETYPES-5=\"900.00\"/><Item Ident=\"200\" Name=\"Плов\" PRICETYPES-3=\"650.00\"/>");
 
     [Theory]
-    [InlineData("reference.test:7443", "https://reference.test:7443/rk7api/v0/xmlinterface.xml")]
+    [InlineData("reference.test:8080", "http://reference.test:8080/rk7api/v0/xmlinterface.xml")]
+    [InlineData("127.0.0.1:8080", "http://127.0.0.1:8080/rk7api/v0/xmlinterface.xml")]
+    [InlineData("http://reference.test:8080/", "http://reference.test:8080/rk7api/v0/xmlinterface.xml")]
+    [InlineData("http://reference.test:8080/rk7api/v0/xmlinterface.xml", "http://reference.test:8080/rk7api/v0/xmlinterface.xml")]
     [InlineData("https://reference.test:7443/", "https://reference.test:7443/rk7api/v0/xmlinterface.xml")]
     [InlineData("https://reference.test:7443/rk7api/v0/xmlinterface.xml", "https://reference.test:7443/rk7api/v0/xmlinterface.xml")]
     public void ResolvesServerAndPortWithoutSavingPassword(string address, string expected)
@@ -27,7 +30,7 @@ public class ReferenceServerTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("http://reference.test:7443")]
+    [InlineData("ftp://reference.test:7443")]
     [InlineData("https://user:password@reference.test/")]
     [InlineData("https://reference.test/?password=test")]
     [InlineData("https://reference.test/unknown")]
@@ -37,14 +40,17 @@ public class ReferenceServerTests
         Assert.Throws<ArgumentException>(() => c.GetEndpoint());
     }
 
-    [Fact]
-    public async Task AuthenticatesEmployeeAndReadsBothReferences()
+    [Theory]
+    [InlineData("http")]
+    [InlineData("https")]
+    public async Task AuthenticatesEmployeeAndReadsBothReferences(string scheme)
     {
         var calls = new List<string>();
         using var http = new HttpClient(new StubHandler(async request =>
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/rk7api/v0/xmlinterface.xml", request.RequestUri!.AbsolutePath);
+            Assert.Equal(scheme, request.RequestUri.Scheme);
             Assert.Equal("Basic", request.Headers.Authorization?.Scheme);
             Assert.Equal(Convert.ToBase64String(Encoding.UTF8.GetBytes("employee:test-password")), request.Headers.Authorization?.Parameter);
             var body = XDocument.Parse(await request.Content!.ReadAsStringAsync());
@@ -56,7 +62,9 @@ public class ReferenceServerTests
             calls.Add(reference);
             return Xml(reference == "PriceTypes" ? Types : Menu);
         }));
-        var catalog = await new ReferenceServerClient(http).ConnectAsync(Connection(), "test-password");
+        var connection = Connection();
+        connection.ServerAddress = scheme + "://reference.test:7443";
+        var catalog = await new ReferenceServerClient(http).ConnectAsync(connection, "test-password");
         Assert.Equal(new[] { "PriceTypes", "MenuItems" }, calls);
         Assert.Equal(2, catalog.Items.Count);
         Assert.Equal(2, catalog.PriceTypes.Count);
