@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = $"Кушать · Печать ценников · {App.DisplayVersion}";
         view = CollectionViewSource.GetDefaultView(rows);
         view.Filter = item => item is ProductRow row &&
             (row.Name.Contains(SearchBox.Text.Trim(), StringComparison.CurrentCultureIgnoreCase) ||

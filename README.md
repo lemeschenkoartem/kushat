@@ -6,12 +6,15 @@
 
 ## Скачать и запустить
 
-[**Скачать готовую сборку для Windows x64 (ZIP)**](https://github.com/lemeschenkoartem/kushat/raw/refs/heads/downloads/Kushat-reference-win-x64.zip)
+[**Скачать сборку 0.1.1 с HTTP для Windows x64 (ZIP)**](https://github.com/lemeschenkoartem/kushat/raw/refs/heads/downloads/Kushat-HTTP-0.1.1-win-x64.zip)
 
 Архив размещён в отдельной ветке `downloads`; рядом находится `SHA256SUMS`.
 
-Распакуйте `Kushat-reference-win-x64.zip` и запустите `Kushat.exe` на Windows 10 22H2 / Windows 11 x64.
+Закройте ранее запущенную программу. Распакуйте `Kushat-HTTP-0.1.1-win-x64.zip` в новую папку
+и запустите `Kushat.exe` из неё на Windows 10 22H2 / Windows 11 x64.
 Это автономная сборка: отдельно устанавливать .NET не требуется.
+В заголовке окна входа должно быть **«0.1.1 · HTTP/HTTPS»**.
+Сообщение «Укажите HTTPS-адрес сервера…» относится к старой сборке.
 
 1. Нажмите **«Войти в R-Keeper»**.
 2. Укажите адрес сервера с портом встроенного XML-интерфейса R-Keeper, логин сотрудника и пароль.
@@ -96,7 +99,8 @@ dotnet run --project src/Kushat.App/Kushat.App.csproj
 ./scripts/build-windows.ps1
 ```
 
-Результат: `artifacts/reference-win-x64/Kushat.exe` и `artifacts/Kushat-reference-win-x64.zip`.
+Результат: `artifacts/reference-win-x64/Kushat.exe`, `artifacts/Kushat-HTTP-0.1.1-win-x64.zip`
+и копия архива с постоянным именем `artifacts/Kushat-reference-win-x64.zip`.
 В Linux можно выполнить `bash scripts/check.sh`: тесты логики и сборка WPF для Windows.
 Тесты проверяют расчёты, тиражи, А4, авторизацию, XML-запросы/ответы, выбор типа цены и обработку отказов.
 Ответы сервера в тестах искусственные; реальный вход у клиента и физическая печать требуют отдельной проверки.

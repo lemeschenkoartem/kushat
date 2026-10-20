@@ -14,10 +14,10 @@ public sealed class LoginWindow : Window
     public LoginWindow(ReferenceConnection saved, HttpClient http)
     {
         Connection = saved;
-        Title = "Вход в R-Keeper"; Width = 520; SizeToContent = SizeToContent.Height;
+        Title = $"Вход в R-Keeper · {App.DisplayVersion} · HTTP/HTTPS"; Width = 520; SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new StackPanel { Margin = new Thickness(28) };
-        panel.Children.Add(new TextBlock { Text = "Подключение к реф-серверу", FontSize = 23, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 20) });
+        panel.Children.Add(new TextBlock { Text = "Подключение к R-Keeper", FontSize = 23, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 20) });
         var address = new TextBox { Text = saved.ServerAddress, ToolTip = "Адрес XML-интерфейса R-Keeper: http://сервер:порт или https://сервер:порт. Без протокола используется HTTP." };
         AddField(panel, "Адрес сервера с портом", address);
         var login = new TextBox { Text = saved.UserName };
