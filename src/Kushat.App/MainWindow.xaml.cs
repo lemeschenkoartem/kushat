@@ -16,8 +16,7 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<ProductRow> rows = [];
     private readonly ICollectionView view;
-    private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false })
-        { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient http = ReferenceHttpClient.Create();
     private AppSettings settings = new();
     private string credential = "";
     private bool demo;
@@ -78,11 +77,9 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or FormatException or ArgumentException)
         {
-            // HTTP messages from the framework can contain request URLs. Do not display those.
             if (ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden })
                 ClearSession();
-            var reason = ex is HttpRequestException { StatusCode: null } or IOException
-                ? "Ошибка связи. Проверьте адрес, порт и протокол HTTP/HTTPS. Для HTTPS также проверьте сертификат." : ex.Message;
+            var reason = ConnectionDiagnostics.Describe(ex);
             StatusText.Text = "Товары не обновлены. " + reason;
             ShowError(StatusText.Text);
         }

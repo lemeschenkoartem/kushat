@@ -35,6 +35,21 @@ public sealed class ReferenceServerClient(HttpClient http)
             new XAttribute("WithChildItems", "2"), new XAttribute("WithMacroProp", "1"));
         request.Content = new StringContent(new XElement("RK7Query", command).ToString(SaveOptions.DisableFormatting),
             Encoding.UTF8, "application/xml");
+        try { return await ReadResponseAsync(request, ct); }
+        catch (HttpRequestException ex) when (ex.StatusCode is null)
+        {
+            request.Options.TryGetValue(ReferenceHttpClient.CertificateFailureKey, out var certificate);
+            throw new ReferenceConnectionException(endpoint, ex, certificate);
+        }
+        catch (IOException ex)
+        {
+            request.Options.TryGetValue(ReferenceHttpClient.CertificateFailureKey, out var certificate);
+            throw new ReferenceConnectionException(endpoint, ex, certificate);
+        }
+    }
+
+    private async Task<XDocument> ReadResponseAsync(HttpRequestMessage request, CancellationToken ct)
+    {
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             throw new HttpRequestException("Сервер отклонил вход. Проверьте логин, пароль и права сотрудника на XML-интерфейс.", null, response.StatusCode);

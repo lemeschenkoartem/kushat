@@ -15,6 +15,7 @@ public sealed class LoginWindow : Window
     {
         Connection = saved;
         Title = $"Вход в R-Keeper · {App.DisplayVersion} · HTTP/HTTPS"; Width = 520; SizeToContent = SizeToContent.Height;
+        MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 40);
         ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new StackPanel { Margin = new Thickness(28) };
         panel.Children.Add(new TextBlock { Text = "Подключение к R-Keeper", FontSize = 23, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 20) });
@@ -27,11 +28,22 @@ public sealed class LoginWindow : Window
         panel.Children.Add(new TextBlock { Text = "Для локального подключения можно указать http://сервер:порт. Без протокола используется HTTP. Порт указывает администратор сервера. Пароль не сохраняется.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 16), Foreground = System.Windows.Media.Brushes.DimGray });
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) };
-        panel.Children.Add(status);
+        panel.Children.Add(new ScrollViewer { Content = status, MaxHeight = 190,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var copyError = new Button { Content = "Скопировать ошибку", Visibility = Visibility.Collapsed,
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12) };
+        copyError.Click += (_, _) =>
+        {
+            try { Clipboard.SetText(status.Text); }
+            catch (System.Runtime.InteropServices.ExternalException)
+            { status.Text += "\nНе удалось записать текст в буфер обмена. Попробуйте ещё раз."; }
+        };
+        panel.Children.Add(copyError);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var connect = new Button { Content = "Войти и загрузить меню", IsDefault = true };
         var cancel = new Button { Content = "Отмена" };
-        buttons.Children.Add(connect); buttons.Children.Add(cancel); panel.Children.Add(buttons); Content = panel;
+        buttons.Children.Add(connect); buttons.Children.Add(cancel); panel.Children.Add(buttons);
+        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         CancellationTokenSource? pending = null;
         var closeRequested = false;
         Closing += (_, e) => { if (pending is not null) { e.Cancel = true; closeRequested = true; pending.Cancel(); } };
@@ -46,6 +58,7 @@ public sealed class LoginWindow : Window
             pending = new CancellationTokenSource();
             connect.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled = false;
             status.Text = "Проверка входа и чтение меню…";
+            copyError.Visibility = Visibility.Collapsed;
             var success = false;
             try
             {
@@ -53,12 +66,15 @@ public sealed class LoginWindow : Window
                 var catalog = await new ReferenceServerClient(http).ConnectAsync(connection, password.Password, pending.Token);
                 Connection = connection; Catalog = catalog; Password = password.Password; success = true;
             }
-            catch (OperationCanceledException) { status.Text = "Вход отменён или истёк таймаут."; }
+            catch (OperationCanceledException)
+            {
+                status.Text = pending.IsCancellationRequested ? "Вход отменён." : $"TIMEOUT: Сервер не ответил за {saved.TimeoutSeconds} секунд.";
+                copyError.Visibility = Visibility.Visible;
+            }
             catch (Exception ex) when (ex is HttpRequestException or System.IO.IOException or FormatException or ArgumentException)
             {
-                status.Text = ex is HttpRequestException { StatusCode: null } or System.IO.IOException
-                    ? "Не удалось связаться с сервером. Проверьте адрес, порт и выбранный протокол HTTP/HTTPS. Для HTTPS также проверьте сертификат."
-                    : ex.Message;
+                status.Text = ConnectionDiagnostics.Describe(ex);
+                copyError.Visibility = Visibility.Visible;
                 password.Clear(); password.Focus();
             }
             finally
