@@ -84,7 +84,8 @@ public class ConnectionDiagnosticsTests
         var names = new SubjectAlternativeNameBuilder();
         names.AddDnsName("localhost"); names.AddIpAddress(IPAddress.Loopback);
         request.CertificateExtensions.Add(names.Build());
-        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+        using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+        using var certificate = TlsTestCertificate.ForServer(generated);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

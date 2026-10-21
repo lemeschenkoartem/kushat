@@ -40,7 +40,8 @@ public class LocalCertificateTests
     public async Task CertificatePassesRealTlsHostnameAndChainValidation(string host)
     {
         var generated = LocalCertificate.Create(DateTimeOffset.UtcNow, host);
-        using var certificate = X509Certificate2.CreateFromPem(generated.Pem, generated.Pem);
+        using var fromPem = X509Certificate2.CreateFromPem(generated.Pem, generated.Pem);
+        using var certificate = TlsTestCertificate.ForServer(fromPem);
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
