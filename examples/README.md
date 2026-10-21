@@ -6,7 +6,8 @@ WSA2, AgentGuid и прямой доступ SQL не используются.
 
 Выполняются два POST-запроса чтения: `GetRefData` с `RefName="PriceTypes"` и `RefName="MenuItems"`,
 `OnlyActive="1"`, `WithChildItems="2"`, `WithMacroProp="1"`.
-Ожидаются `RK7QueryResult Status="Ok"`, успешный `CommandResult` и `RK7Reference/Items/Item`.
+Ожидаются `RK7QueryResult Status="Ok"` и `RK7Reference/Items/Item`, непосредственно
+в корне или внутри успешного `CommandResult`.
 Тип цены выбирается по `Ident`, соответствующему макросвойству `PRICETYPES-<Ident>` элемента меню.
 Значение макросвойства трактуется как рубли. Перед эксплуатацией обязательно сверьте цены с R-Keeper.
 
@@ -22,3 +23,7 @@ WSA2, AgentGuid и прямой доступ SQL не используются.
 
 Для локального подключения укажите `http://сервер:порт`. Если протокол опущен, используется HTTP.
 Для HTTPS сохраняется стандартная проверка сертификата.
+
+В 0.2.0 режим и единица определяются по PriceMode, PortionName и PortionWeight.
+Подробности обработки стандартной порции и ограничения формата описаны в
+[документации Reference API](../docs/reference-server.md).
