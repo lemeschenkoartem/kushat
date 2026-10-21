@@ -71,8 +71,8 @@ public class CertificateAutomationTests
         var added = false;
         try
         {
-            added = CertificateTrust.Install(generated.PublicCertificate, endpoint, fingerprint, StoreLocation.CurrentUser);
-            Assert.False(CertificateTrust.Install(generated.PublicCertificate, endpoint, fingerprint, StoreLocation.CurrentUser));
+            added = CertificateTrust.Install(generated.PublicCertificate, endpoint, fingerprint, StoreLocation.LocalMachine);
+            Assert.False(CertificateTrust.Install(generated.PublicCertificate, endpoint, fingerprint, StoreLocation.LocalMachine));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var serving = Task.Run(async () =>
             {
@@ -85,6 +85,6 @@ public class CertificateAutomationTests
             Assert.True(result.Ready, result.Text); Assert.True(result.PortOpen);
             Assert.Equal(fingerprint, result.Certificate!.Sha256);
         }
-        finally { if (added) CertificateTrust.RemoveAdded(generated.PublicCertificate, StoreLocation.CurrentUser); }
+        finally { if (added) CertificateTrust.RemoveAdded(generated.PublicCertificate, StoreLocation.LocalMachine); }
     }
 }

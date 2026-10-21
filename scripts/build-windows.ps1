@@ -1,9 +1,9 @@
 param([string]$Runtime = "win-x64")
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
-dotnet test tests/Kushat.Core.Tests/Kushat.Core.Tests.csproj -c Release --nologo
+dotnet test tests/Kushat.Core.Tests/Kushat.Core.Tests.csproj -c Release --nologo --logger "console;verbosity=normal" --blame-hang-timeout 90s --blame-hang-dump-type mini
 if ($LASTEXITCODE -ne 0) { throw "Проверки не прошли." }
-dotnet test tests/Kushat.Windows.Tests/Kushat.Windows.Tests.csproj -c Release --nologo
+dotnet test tests/Kushat.Windows.Tests/Kushat.Windows.Tests.csproj -c Release --nologo --logger "console;verbosity=normal" --blame-hang-timeout 90s --blame-hang-dump-type mini
 if ($LASTEXITCODE -ne 0) { throw "Проверки Windows не прошли." }
 dotnet publish src/Kushat.App/Kushat.App.csproj -c Release -r $Runtime --self-contained true `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
