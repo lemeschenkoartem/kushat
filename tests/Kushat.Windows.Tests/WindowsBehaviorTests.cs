@@ -27,6 +27,20 @@ public class WindowsBehaviorTests
     }
 
     [Fact]
+    public void CertificateWizardCannotContinueOrFinishBeforeInspection()
+    {
+        Sta(() =>
+        {
+            var wizard = new CertificateWizardWindow("https://127.0.0.1:8010");
+            var buttons = LogicalChildren(wizard).OfType<Button>().ToArray();
+            Assert.False(buttons.Single(b => Equals(b.Content, "Далее →")).IsEnabled);
+            Assert.Equal(Visibility.Collapsed, buttons.Single(b => Equals(b.Content, "Завершить")).Visibility);
+            Assert.Equal(Visibility.Collapsed, buttons.Single(b => Equals(b.Content, "Остановить службу")).Visibility);
+            wizard.Close();
+        });
+    }
+
+    [Fact]
     public void WindowsDpapiRestoresSavedLoginUsingAnotherProtectorInstance()
     {
         var connection = new ReferenceConnection { ServerAddress = "https://ref.example:8010", UserName = "labels" };

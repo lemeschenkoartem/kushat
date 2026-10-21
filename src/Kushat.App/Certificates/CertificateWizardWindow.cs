@@ -127,7 +127,9 @@ public sealed class CertificateWizardWindow : Window
 
     private void InvalidateInspection()
     {
+        timer.Stop(); selected = null; inspectedServiceState = null;
         report = null; bound = false; files = []; folders.ItemsSource = null;
+        serverState.Text = "";
         results.Text = "Нажмите «Найти и проверить»."; RefreshButtons();
     }
 
