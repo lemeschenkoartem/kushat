@@ -36,9 +36,10 @@ public class LocalCertificateTests
     [InlineData("rk7.local")]
     [InlineData("localhost")]
     [InlineData("::1")]
+    [InlineData("192.168.7.2")]
     public async Task CertificatePassesRealTlsHostnameAndChainValidation(string host)
     {
-        var generated = LocalCertificate.Create(DateTimeOffset.UtcNow);
+        var generated = LocalCertificate.Create(DateTimeOffset.UtcNow, host);
         using var certificate = X509Certificate2.CreateFromPem(generated.Pem, generated.Pem);
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -72,5 +73,14 @@ public class LocalCertificateTests
         }, timeout.Token);
         await serverTask;
         Assert.True(stream.IsAuthenticated);
+    }
+
+    [Fact]
+    public void ReplacementRequiresRequestedIpInSan()
+    {
+        var generated = LocalCertificate.Create(DateTimeOffset.UtcNow, "192.168.7.2");
+        var pem = System.Text.Encoding.ASCII.GetBytes(generated.Pem);
+        CertificateFiles.ValidateReplacement(pem, "192.168.7.2");
+        Assert.Throws<InvalidDataException>(() => CertificateFiles.ValidateReplacement(pem, "192.168.7.3"));
     }
 }
