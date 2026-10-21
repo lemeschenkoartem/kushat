@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
 using System.Printing;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -17,6 +18,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ProductRow> rows = [];
     private readonly ICollectionView view;
     private readonly HttpClient http = ReferenceHttpClient.Create();
+    private readonly WindowsLoginProtector loginProtector = new();
     private AppSettings settings = new();
     private string credential = "";
     private bool demo;
@@ -25,6 +27,7 @@ public partial class MainWindow : Window
     private ReferenceCatalog? catalog;
     private string? priceTypeId;
     private bool changingPriceType;
+    private bool settingsWritable;
     private CancellationTokenSource? loading;
 
     public MainWindow()
@@ -36,10 +39,17 @@ public partial class MainWindow : Window
             (row.Name.Contains(SearchBox.Text.Trim(), StringComparison.CurrentCultureIgnoreCase) ||
              row.Id.Contains(SearchBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
         ProductsGrid.ItemsSource = view;
-        try { settings = SettingsStore.Load(); }
+        try { settings = SettingsStore.Load(); settingsWritable = true; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException)
         { ShowError("Не удалось прочитать настройки. Их можно задать заново. Файл: " + SettingsStore.FilePath); }
+        TemplateBox.ItemsSource = LabelTemplates.All;
+        TemplateBox.SelectedValue = settings.TemplateId;
+        WeightPriceBox.Items.Add(new ComboBoxItem { Content = "За 1 кг и за 100 г", Tag = WeightPriceMode.Both });
+        WeightPriceBox.Items.Add(new ComboBoxItem { Content = "Только за 1 кг", Tag = WeightPriceMode.Kilogram });
+        WeightPriceBox.Items.Add(new ComboBoxItem { Content = "Только за 100 г", Tag = WeightPriceMode.HundredGrams });
+        WeightPriceBox.SelectedValue = settings.WeightPriceMode;
         LoadPrinters(); UpdateSummary();
+        Loaded += AutoConnectLoaded;
     }
 
     private void SearchChanged(object sender, TextChangedEventArgs e) => view?.Refresh();
@@ -64,12 +74,32 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(credential)) { ConnectClick(sender, e); return; }
         if (loading is not null || !ConfirmReplace()) return;
+        await ReloadCatalogAsync(false);
+    }
+
+    private async void AutoConnectLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= AutoConnectLoaded;
+        var profile = settings.ActiveProfile;
+        if (profile?.SavedLogin is null || !profile.RememberLogin) return;
+        try { credential = profile.SavedLogin.Open(profile.Connection, loginProtector); }
+        catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
+        {
+            ForgetSavedLogin();
+            StatusText.Text = "Не удалось восстановить сохранённый вход. Нажмите «Подключения…» и введите пароль заново.";
+            return;
+        }
+        await ReloadCatalogAsync(true);
+    }
+
+    private async Task ReloadCatalogAsync(bool automatic)
+    {
         loading = new CancellationTokenSource();
-        SetBusy(true); StatusText.Text = "Загрузка меню из реф-сервера…";
+        SetBusy(true); StatusText.Text = automatic ? "Автоматический вход и загрузка свежих цен…" : "Загрузка меню из реф-сервера…";
         try
         {
             var result = await new ReferenceServerClient(http).ConnectAsync(settings.Connection, credential, loading.Token);
-            AcceptCatalog(result, priceTypeId);
+            AcceptCatalog(result, automatic ? null : priceTypeId);
         }
         catch (OperationCanceledException)
         {
@@ -78,10 +108,10 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is HttpRequestException or IOException or FormatException or ArgumentException)
         {
             if (ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden })
-                ClearSession();
+            { ForgetSavedLogin(); ClearSession(); }
             var reason = ConnectionDiagnostics.Describe(ex);
             StatusText.Text = "Товары не обновлены. " + reason;
-            ShowError(StatusText.Text);
+            if (!automatic) ShowError(StatusText.Text);
         }
         finally { loading.Dispose(); loading = null; SetBusy(false); }
     }
@@ -103,7 +133,7 @@ public partial class MainWindow : Window
         ClearSession();
         ReplaceProducts([
             new("demo-1", "Салат Оливье", 850m), new("demo-2", "Плов с говядиной", 650m),
-            new("demo-3", "Котлеты домашние", 900m), new("demo-4", "Картофельное пюре", 315.55m),
+            new("demo-3", "Пирожок с капустой", 55m, SaleUnit.Piece), new("demo-4", "Картофельное пюре", 315.55m),
             new("demo-5", "Салат из свежих овощей с зеленью", 420m)
         ], true);
         StatusText.Text = "ДЕМО: товары и цены вымышлены. На каждом ценнике будет отметка «Демонстрационные данные».";
@@ -122,16 +152,27 @@ public partial class MainWindow : Window
     }
 
     private void SelectVisibleClick(object sender, RoutedEventArgs e)
-    { foreach (var row in view.Cast<ProductRow>().ToArray()) row.IsSelected = true; }
+    { foreach (var row in view.Cast<ProductRow>().Where(r => r.CanPrint).ToArray()) row.IsSelected = true; }
     private void ClearSelectionClick(object sender, RoutedEventArgs e)
     { foreach (var row in rows) row.IsSelected = false; }
 
     private void ConnectClick(object sender, RoutedEventArgs e)
     {
         if (loading is not null || !ConfirmReplace()) return;
-        var dialog = new LoginWindow(settings.Connection, http) { Owner = this };
+        var dialog = new LoginWindow(settings, http) { Owner = this };
         if (dialog.ShowDialog() != true) return;
-        settings.Connection = dialog.Connection; credential = dialog.Password; SaveSettings();
+        credential = dialog.Password;
+        LoginEnvelope? savedLogin = null;
+        if (dialog.RememberLogin)
+        {
+            try { savedLogin = LoginEnvelope.Create(dialog.Connection, credential, loginProtector); }
+            catch (CryptographicException)
+            { ShowError("Вход выполнен, но Windows не удалось защитить пароль. Автоматический вход не сохранён."); }
+        }
+        var profile = settings.RememberConnection(dialog.Connection, dialog.ProfileName, savedLogin);
+        profile.RememberLogin = dialog.RememberLogin;
+        settingsWritable = true;
+        SaveSettings();
         LogoutButton.IsEnabled = true;
         AcceptCatalog(dialog.Catalog!, null);
     }
@@ -139,11 +180,12 @@ public partial class MainWindow : Window
     private void AcceptCatalog(ReferenceCatalog result, string? selectedType)
     {
         catalog = result; catalogLoadedAt = DateTime.Now; priceTypeId = null;
+        ConnectionText.Text = $"Сервер: {settings.Connection.ServerAddress} · работник: {settings.Connection.UserName}";
         ReplaceProducts([], false);
         changingPriceType = true;
         PriceTypeBox.ItemsSource = result.PriceTypes;
         PriceTypeBox.SelectedValue = result.PriceTypes.Any(p => p.Id == selectedType) ? selectedType :
-            result.PriceTypes.Count == 1 ? result.PriceTypes[0].Id : null;
+            result.DefaultPriceTypeId;
         changingPriceType = false;
         PriceTypePanel.Visibility = Visibility.Visible;
         if (PriceTypeBox.SelectedValue is string id) ApplyPriceType(id);
@@ -167,7 +209,7 @@ public partial class MainWindow : Window
             var priced = catalog!.SelectPriceType(id);
             priceTypeId = id;
             ReplaceProducts(priced.Products, false, catalogLoadedAt);
-            StatusText.Text = $"Загружено товаров: {rows.Count}. Без цены и недоступно для печати: {priced.WithoutPrice}. Обновлено: {loadedAt:dd.MM.yyyy HH:mm}. Проверьте, что цена весовых товаров указана за 1 кг.";
+            StatusText.Text = $"Загружено товаров: {rows.Count}. Без цены и недоступно для печати: {priced.WithoutPrice}. Обновлено: {loadedAt:dd.MM.yyyy HH:mm}. Цена — за кг или штуку по данным R-Keeper. Не определена единица: {rows.Count(r => !r.CanPrint)}; эти товары недоступны для печати.";
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
@@ -178,12 +220,21 @@ public partial class MainWindow : Window
     private void LogoutClick(object sender, RoutedEventArgs e)
     {
         if (!ConfirmReplace()) return;
-        ClearSession(); StatusText.Text = "Вы вышли из R-Keeper. Пароль и загруженное меню удалены из текущего сеанса.";
+        var forgotten = ForgetSavedLogin(); ClearSession();
+        StatusText.Text = forgotten ? "Вы вышли из R-Keeper. Сохранённый вход для этого подключения удалён."
+            : "Вы вышли из текущего сеанса, но не удалось удалить сохранённый вход из файла настроек.";
+    }
+
+    private bool ForgetSavedLogin()
+    {
+        if (settings.ActiveProfile is not { } profile) return true;
+        profile.SavedLogin = null; profile.RememberLogin = false; return SaveSettings();
     }
 
     private void ClearSession()
     {
         credential = ""; catalog = null; catalogLoadedAt = null; priceTypeId = null;
+        ConnectionText.Text = "Нет активного подключения";
         changingPriceType = true; PriceTypeBox.ItemsSource = null; changingPriceType = false;
         PriceTypePanel.Visibility = Visibility.Collapsed; LogoutButton.IsEnabled = false;
         ReplaceProducts([], false); loadedAt = null;
@@ -210,6 +261,24 @@ public partial class MainWindow : Window
     private void PrinterChanged(object sender, SelectionChangedEventArgs e)
     { if (PrinterBox.SelectedItem is string name) { settings.PrinterName = name; SaveSettings(); } }
 
+    private void TemplateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (TemplateBox.SelectedItem is not LabelTemplate template) return;
+        settings.TemplateId = template.Id;
+        TemplateDescription.Text = template.Description;
+        UpdateTemplatePreview();
+        SaveSettings();
+    }
+
+    private void WeightPriceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (WeightPriceBox.SelectedValue is not WeightPriceMode mode) return;
+        settings.WeightPriceMode = mode; UpdateTemplatePreview(); SaveSettings();
+    }
+
+    private void UpdateTemplatePreview() => TemplatePreview.Child = LabelDocument.CreateLabel(
+        new Product("sample", "Салат Оливье", 850m), false, LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode);
+
     private FixedDocument BuildDocument()
     {
         var orders = rows.Where(r => r.IsSelected).Select(r =>
@@ -217,7 +286,7 @@ public partial class MainWindow : Window
             if (!r.TryQuantity(out var quantity)) throw new ArgumentException("Исправьте количество у товара «" + r.Name + "».");
             return new LabelOrder(r.Product, quantity);
         });
-        return LabelDocument.Create(LabelLayout.Create(orders), demo);
+        return LabelDocument.Create(LabelLayout.Create(orders), demo, LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode);
     }
 
     private void PreviewClick(object sender, RoutedEventArgs e)
@@ -253,11 +322,12 @@ public partial class MainWindow : Window
         { ShowError("Печать не выполнена. " + ex.Message); }
     }
 
-    private void SaveSettings()
+    private bool SaveSettings()
     {
-        try { SettingsStore.Save(settings); }
+        if (!settingsWritable) return false;
+        try { SettingsStore.Save(settings); return true; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        { ShowError("Не удалось сохранить настройки в " + SettingsStore.FilePath + ". Проверьте права доступа."); }
+        { ShowError("Не удалось сохранить настройки в " + SettingsStore.FilePath + ". Проверьте права доступа."); return false; }
     }
     private void ShowError(string message) => MessageBox.Show(this, message, "Кушать · Ценники", MessageBoxButton.OK, MessageBoxImage.Warning);
     private void OnClosing(object? sender, CancelEventArgs e)

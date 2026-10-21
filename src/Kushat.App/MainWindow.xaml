@@ -5,11 +5,12 @@
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <StackPanel Margin="0,0,0,18">
    <TextBlock Text="Печать ценников" FontSize="28" FontWeight="SemiBold"/>
-   <TextBlock Text="R-Keeper · Реф-сервер   ·   А4, 4 ценника по 14 × 10 см   ·   Цена за кг и за 100 г" Foreground="#526170" Margin="0,6,0,0"/>
+   <TextBlock Text="R-Keeper · Reference-сервер   ·   А4, 4 ценника по 14 × 10 см" Foreground="#526170" Margin="0,6,0,0"/>
+   <TextBlock x:Name="ConnectionText" Foreground="#526170" Margin="0,4,0,0"/>
   </StackPanel>
   <StackPanel Grid.Row="1" Margin="0,0,0,16">
   <DockPanel>
-   <Button x:Name="ConnectButton" Content="Войти в R-Keeper" Click="ConnectClick" DockPanel.Dock="Left"/>
+   <Button x:Name="ConnectButton" Content="Подключения…" Click="ConnectClick" DockPanel.Dock="Left"/>
    <Button x:Name="RefreshButton" Content="Обновить меню" Click="RefreshClick" DockPanel.Dock="Left"/>
    <Button x:Name="LogoutButton" Content="Выйти" Click="LogoutClick" DockPanel.Dock="Left" IsEnabled="False"/>
    <Button x:Name="DemoButton" Content="Демо-товары" Click="DemoClick" DockPanel.Dock="Left"/>
@@ -19,11 +20,11 @@
    <StackPanel x:Name="PriceTypePanel" Orientation="Horizontal" Margin="0,12,0,0" Visibility="Collapsed">
     <TextBlock Text="Тип цены" VerticalAlignment="Center" Margin="0,0,12,0"/>
     <ComboBox x:Name="PriceTypeBox" DisplayMemberPath="Name" SelectedValuePath="Id" MinWidth="240" MaxWidth="500" MinHeight="34" SelectionChanged="PriceTypeChanged"/>
-    <TextBlock Text="Выбирайте весовые товары с ценой за килограмм." VerticalAlignment="Center" Margin="16,0,0,0" Foreground="#526170"/>
+    <TextBlock Text="Основной тип цены выбирается автоматически." VerticalAlignment="Center" Margin="16,0,0,0" Foreground="#526170"/>
    </StackPanel>
   </StackPanel>
   <Grid Grid.Row="2">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="300"/></Grid.ColumnDefinitions>
+   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="320"/></Grid.ColumnDefinitions>
    <Grid Margin="0,0,18,0">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -35,23 +36,36 @@
       SelectionMode="Extended" EnableRowVirtualization="True">
      <DataGrid.Columns>
       <DataGridTemplateColumn Header="✓" Width="44">
-       <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
+       <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanPrint}" HorizontalAlignment="Center" VerticalAlignment="Center"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
       <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
-      <DataGridTextColumn Header="₽ / кг" Binding="{Binding PricePerKg}" Width="100" IsReadOnly="True"/>
+      <DataGridTextColumn Header="Цена, ₽" Binding="{Binding Price}" Width="100" IsReadOnly="True"/>
+      <DataGridTemplateColumn Header="За" Width="90">
+       <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding UnitTitle}" ToolTip="{Binding UnitError}" VerticalAlignment="Center" TextWrapping="Wrap"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
       <DataGridTextColumn Header="₽ / 100 г" Binding="{Binding PricePer100Grams}" Width="100" IsReadOnly="True"/>
       <DataGridTemplateColumn Header="Ценников" Width="90">
-       <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" Margin="4" ToolTip="Количество экземпляров этого ценника"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
+       <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox IsEnabled="{Binding CanPrint}" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" Margin="4" ToolTip="Количество экземпляров этого ценника"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
      </DataGrid.Columns>
     </DataGrid>
    </Grid>
    <Border Grid.Column="1" Background="White" BorderBrush="#DCE2E8" BorderThickness="1" CornerRadius="8" Padding="18">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel>
      <TextBlock Text="Параметры печати" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,20"/>
      <TextBlock Text="Принтер Windows" Margin="0,0,0,8"/>
      <ComboBox x:Name="PrinterBox" SelectionChanged="PrinterChanged" MinHeight="34"/>
      <Button Content="Обновить список принтеров" Click="ReloadPrintersClick" Margin="0,8,0,20" Padding="6"/>
+     <TextBlock Text="Шаблон ценника" Margin="0,0,0,8"/>
+     <ComboBox x:Name="TemplateBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="TemplateChanged" MinHeight="34"/>
+     <TextBlock x:Name="TemplateDescription" TextWrapping="Wrap" Foreground="#526170" Margin="0,8,0,8"/>
+     <TextBlock Text="Цена весовых товаров" Margin="0,0,0,8"/>
+     <ComboBox x:Name="WeightPriceBox" MinHeight="34" SelectedValuePath="Tag" SelectionChanged="WeightPriceChanged" Margin="0,0,0,12"/>
+     <Border Background="#F4F6F8" Padding="8" Margin="0,0,0,8">
+      <Viewbox x:Name="TemplatePreview" Height="160" Stretch="Uniform"/>
+     </Border>
+     <TextBlock Text="Образец оформления · 100 × 140 мм" Foreground="#526170" FontSize="12" Margin="0,0,0,16"/>
      <TextBlock Text="А4 · книжная ориентация&#10;Масштаб 100% · без подгонки&#10;Размер ценника: 100 × 140 мм" TextWrapping="Wrap" Foreground="#526170" LineHeight="23"/>
      <Separator Margin="0,20"/>
      <TextBlock x:Name="SummaryText" FontSize="16" TextWrapping="Wrap" LineHeight="26"/>
@@ -59,9 +73,10 @@
      <Button x:Name="PreviewButton" Content="Предварительный просмотр" Click="PreviewClick" Margin="0,0,0,10"/>
      <Button x:Name="PrintButton" Content="Напечатать…" Click="PrintClick" Margin="0" Background="#215C45" Foreground="White"/>
     </StackPanel>
+    </ScrollViewer>
    </Border>
   </Grid>
   <TextBlock x:Name="StatusText" Grid.Row="3" Margin="0,16,0,0" TextWrapping="Wrap" Foreground="#526170"
-   Text="Нажмите «Войти в R-Keeper»: адрес сервера, логин и пароль сотрудника. Печать можно проверить на демо-товарах."/>
+   Text="Нажмите «Подключения…» и укажите свой сервер R-Keeper. Печать можно проверить на демо-товарах."/>
  </Grid>
 </Window>

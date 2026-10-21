@@ -5,8 +5,12 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>Kushat</AssemblyName>
-    <Version>0.1.2</Version>
+    <Version>0.2.0</Version>
+    <ApplicationIcon>Assets/Kushat.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../Kushat.Core/Kushat.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Kushat.Core/Kushat.Core.csproj" />
+    <Resource Include="Assets/Kushat.ico" />
+  </ItemGroup>
 </Project>

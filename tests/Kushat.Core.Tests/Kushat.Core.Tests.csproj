@@ -7,5 +7,6 @@
   <ProjectReference Include="../../src/Kushat.Core/Kushat.Core.csproj" />
   <Compile Include="../../tools/Kushat.CertificateTool/LocalCertificate.cs" Link="LocalCertificate.cs" />
   <Compile Include="../../tools/Kushat.CertificateTool/CertificateFiles.cs" Link="CertificateFiles.cs" />
+  <Compile Include="../../src/Kushat.App/AppSettings.cs" Link="AppSettings.cs" />
  </ItemGroup>
 </Project>

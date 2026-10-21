@@ -85,6 +85,7 @@ public sealed class ReferenceServerClient(HttpClient http)
         if ((string?)root.Attribute("Status") != "Ok")
             throw new FormatException("R-Keeper отклонил запрос. Проверьте права сотрудника, доступность и лицензию XML-интерфейса.");
         var commands = root.Elements("CommandResult").ToArray();
+        if (commands.Length == 0 && root.Elements("RK7Reference").Count() == 1) return;
         if (commands.Length != 1 || (string?)commands[0].Attribute("Status") != "Ok" ||
             (string?)commands[0].Attribute("CMD") != "GetRefData")
             throw new FormatException("Не удалось прочитать справочник R-Keeper. Проверьте права сотрудника на чтение меню и типов цен.");
@@ -93,7 +94,7 @@ public sealed class ReferenceServerClient(HttpClient http)
     private static IEnumerable<XElement> Items(XDocument document)
     {
         ValidateResponse(document);
-        var reference = document.Root!.Element("CommandResult")!.Element("RK7Reference")
+        var reference = (document.Root!.Element("CommandResult") ?? document.Root).Element("RK7Reference")
             ?? throw new FormatException("В ответе отсутствует справочник R-Keeper.");
         var items = reference.Element("Items") ?? throw new FormatException("В ответе отсутствует список элементов справочника.");
         // Only direct Items/Item nodes: descendants may include unrelated child objects.
@@ -121,18 +122,23 @@ public sealed class ReferenceServerClient(HttpClient http)
         {
             var id = Required(item, "Ident");
             if (!seen.Add(id)) throw new FormatException("В меню повторяются идентификаторы товаров.");
+            var measurement = SaleMeasurement.FromReference((string?)item.Attribute("PriceMode"),
+                (string?)item.Attribute("PortionName"), (string?)item.Attribute("PortionWeight"));
             var prices = new Dictionary<string, decimal>(StringComparer.Ordinal);
             foreach (var attribute in item.Attributes().Where(a => a.Name.LocalName.StartsWith("PRICETYPES-", StringComparison.Ordinal)))
             {
                 var typeId = attribute.Name.LocalName[11..];
                 // Empty macro values mean that this price type has no price for the dish.
                 if (string.IsNullOrWhiteSpace(attribute.Value)) continue;
+                if (attribute.Value == "9223372036854775807") continue;
                 if (typeId.Length == 0 || !decimal.TryParse(attribute.Value,
                     NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var price) || price < 0)
                     throw new FormatException("В меню обнаружена некорректная цена. Загрузка остановлена.");
-                prices.Add(typeId, decimal.Round(price, 2, MidpointRounding.AwayFromZero));
+                // Keep conversion precision so the 100 g price is not derived from an already rounded kg price.
+                try { prices.Add(typeId, price / measurement.PriceDivisor); }
+                catch (OverflowException) { throw new FormatException("Цена после пересчёта выходит за допустимый диапазон."); }
             }
-            result.Add(new ReferenceItem(id, Required(item, "Name"), prices));
+            result.Add(new ReferenceItem(id, Required(item, "Name"), prices, measurement.Unit, measurement.Error));
         }
         if (result.Count == 0) throw new FormatException("Реф-сервер вернул пустое меню.");
         if (!result.Any(i => i.Prices.Count > 0))

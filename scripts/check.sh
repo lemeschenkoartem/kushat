@@ -9,4 +9,5 @@ export NUGET_PACKAGES="${NUGET_PACKAGES:-/workspace/.nuget/packages}"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 dotnet test tests/Kushat.Core.Tests/Kushat.Core.Tests.csproj -c Release --nologo
 dotnet build src/Kushat.App/Kushat.App.csproj -c Release --nologo
+dotnet build tests/Kushat.Windows.Tests/Kushat.Windows.Tests.csproj -c Release --nologo
 dotnet build tools/Kushat.CertificateTool/Kushat.CertificateTool.csproj -c Release --nologo

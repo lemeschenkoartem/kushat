@@ -1,8 +1,13 @@
 namespace Kushat.Core;
 
-public sealed record Product(string Id, string Name, decimal PricePerKg)
+public sealed record Product(string Id, string Name, decimal Price, SaleUnit Unit = SaleUnit.Kilogram, string? UnitError = null)
 {
-    public decimal PricePer100Grams => Money.Per100Grams(PricePerKg);
+    public decimal DisplayPrice => decimal.Round(Price, 2, MidpointRounding.AwayFromZero);
+    public decimal PricePerKg => Unit == SaleUnit.Kilogram ? DisplayPrice : throw new InvalidOperationException("Товар не весовой.");
+    public decimal? PricePer100Grams => Unit == SaleUnit.Kilogram ? Money.Per100Grams(Price) : null;
+    public bool CanPrint => Unit is SaleUnit.Kilogram or SaleUnit.Piece;
+    public string UnitTitle => Unit switch { SaleUnit.Kilogram => "кг", SaleUnit.Piece => "шт.", _ => "не определено" };
+    public string PriceTitle => Unit == SaleUnit.Piece ? "Цена за 1 шт." : "Цена за 1 кг";
 }
 
 public static class Money
@@ -33,8 +38,9 @@ public static class LabelLayout
         {
             if (order.Quantity is < 1 or > MaxQuantity)
                 throw new ArgumentException($"Количество ценников: от 1 до {MaxQuantity}.");
-            if (string.IsNullOrWhiteSpace(order.Product.Name) || order.Product.PricePerKg < 0)
+            if (string.IsNullOrWhiteSpace(order.Product.Name) || order.Product.Price < 0)
                 throw new ArgumentException("У товара должны быть наименование и неотрицательная цена.");
+            if (!order.Product.CanPrint) throw new ArgumentException("Не определена единица товара: " + order.Product.Name);
             if (labels.Count + order.Quantity > MaxLabels)
                 throw new ArgumentException($"За один раз можно печатать до {MaxLabels} ценников.");
             labels.AddRange(Enumerable.Repeat(order.Product, order.Quantity));

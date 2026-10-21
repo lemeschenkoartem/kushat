@@ -6,7 +6,7 @@ namespace Kushat.App;
 
 public partial class App : Application
 {
-    public static string DisplayVersion => typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.1.2";
+    public static string DisplayVersion => typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.2.0";
 
     protected override void OnStartup(StartupEventArgs e)
     {

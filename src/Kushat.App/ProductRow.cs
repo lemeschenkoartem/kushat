@@ -10,10 +10,13 @@ public sealed class ProductRow(Product product) : INotifyPropertyChanged, IDataE
     public Product Product { get; } = product;
     public string Name => Product.Name;
     public string Id => Product.Id;
-    public string PricePerKg => Product.PricePerKg.ToString("N2", CultureInfo.GetCultureInfo("ru-RU"));
-    public string PricePer100Grams => Product.PricePer100Grams.ToString("N2", CultureInfo.GetCultureInfo("ru-RU"));
+    public string Price => Product.DisplayPrice.ToString("N2", CultureInfo.GetCultureInfo("ru-RU"));
+    public string PricePer100Grams => Product.PricePer100Grams?.ToString("N2", CultureInfo.GetCultureInfo("ru-RU")) ?? "—";
+    public string UnitTitle => Product.UnitTitle;
+    public string? UnitError => Product.UnitError;
+    public bool CanPrint => Product.CanPrint;
     private bool selected;
-    public bool IsSelected { get => selected; set { selected = value; Changed(); } }
+    public bool IsSelected { get => selected; set { selected = value && CanPrint; Changed(); } }
     private string quantity = "1";
     public string Quantity { get => quantity; set { quantity = value; Changed(); } }
     public bool TryQuantity(out int result) => int.TryParse(Quantity, NumberStyles.None,

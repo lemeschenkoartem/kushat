@@ -12,7 +12,7 @@ public class ReferenceServerTests
     private static ReferenceConnection Connection() => new() { ServerAddress = "https://reference.test:7443", UserName = "employee" };
     private static string Response(string items) => "<RK7QueryResult Status=\"Ok\"><CommandResult CMD=\"GetRefData\" Status=\"Ok\"><RK7Reference><Items>" + items + "</Items></RK7Reference></CommandResult></RK7QueryResult>";
     private static readonly string Types = Response("<Item Ident=\"3\" Name=\"Основная\"/><Item Ident=\"5\" Name=\"Доставка\"/>");
-    private static readonly string Menu = Response("<Item Ident=\"100\" Name=\"Оливье\" PRICETYPES-3=\"850.55\" PRICETYPES-5=\"900.00\"/><Item Ident=\"200\" Name=\"Плов\" PRICETYPES-3=\"650.00\"/>");
+    private static readonly string Menu = Response("<Item Ident=\"100\" Name=\"Оливье\" PriceMode=\"pmPerUnitOfWeight\" PortionName=\"кг\" PRICETYPES-3=\"850.55\" PRICETYPES-5=\"900.00\"/><Item Ident=\"200\" Name=\"Плов\" PriceMode=\"pmPerPiece\" PRICETYPES-3=\"650.00\"/>");
 
     [Theory]
     [InlineData("reference.test:8080", "http://reference.test:8080/rk7api/v0/xmlinterface.xml")]

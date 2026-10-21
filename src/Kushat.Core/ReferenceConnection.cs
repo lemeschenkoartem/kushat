@@ -1,6 +1,6 @@
 namespace Kushat.Core;
 
-// Passwords belong to a live session, never to persisted connection settings.
+// Passwords are never stored here; optional remembered logins use a separate encrypted envelope.
 public sealed class ReferenceConnection
 {
     public string ServerAddress { get; set; } = "";
@@ -24,16 +24,22 @@ public sealed class ReferenceConnection
 }
 
 public sealed record PriceType(string Id, string Name);
-public sealed record ReferenceItem(string Id, string Name, IReadOnlyDictionary<string, decimal> Prices);
+public sealed record ReferenceItem(string Id, string Name, IReadOnlyDictionary<string, decimal> Prices,
+    SaleUnit Unit = SaleUnit.Unknown, string? UnitError = null);
 public sealed record PricedCatalog(IReadOnlyList<Product> Products, int WithoutPrice);
 
 public sealed record ReferenceCatalog(IReadOnlyList<PriceType> PriceTypes, IReadOnlyList<ReferenceItem> Items)
 {
+    public string? DefaultPriceTypeId => PriceTypes.FirstOrDefault(p =>
+        p.Name.Trim().Equals("Основной", StringComparison.OrdinalIgnoreCase))?.Id
+        ?? PriceTypes.FirstOrDefault(p => p.Name.Trim().Equals("Основная", StringComparison.OrdinalIgnoreCase))?.Id
+        ?? (PriceTypes.Count == 1 ? PriceTypes[0].Id : null);
+
     public PricedCatalog SelectPriceType(string id)
     {
         if (!PriceTypes.Any(p => p.Id == id)) throw new ArgumentException("Выберите тип цены из загруженного справочника.");
         var products = Items.Where(i => i.Prices.ContainsKey(id))
-            .Select(i => new Product(i.Id, i.Name, i.Prices[id])).ToArray();
+            .Select(i => new Product(i.Id, i.Name, i.Prices[id], i.Unit, i.UnitError)).ToArray();
         if (products.Length == 0)
             throw new FormatException("Для выбранного типа цены нет значений. Проверьте цены и доступность макросвойств меню на сервере.");
         return new(products, Items.Count - products.Length);
