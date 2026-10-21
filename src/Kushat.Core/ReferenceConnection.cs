@@ -9,6 +9,15 @@ public sealed class ReferenceConnection
 
     public Uri GetEndpoint()
     {
+        var endpoint = GetServerEndpoint();
+        if (string.IsNullOrWhiteSpace(UserName) || UserName.Contains(':') || UserName.Any(char.IsControl))
+            throw new ArgumentException("Укажите логин сотрудника без двоеточий и управляющих символов.");
+        if (TimeoutSeconds is < 1 or > 300) throw new ArgumentException("Таймаут должен быть от 1 до 300 секунд.");
+        return endpoint;
+    }
+
+    public Uri GetServerEndpoint()
+    {
         var address = ServerAddress?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("Укажите адрес реф-сервера и порт XML-интерфейса.");
         if (!address.Contains("://", StringComparison.Ordinal)) address = "http://" + address;
@@ -16,9 +25,6 @@ public sealed class ReferenceConnection
             !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
             (uri.AbsolutePath != "/" && uri.AbsolutePath != "/rk7api/v0/xmlinterface.xml"))
             throw new ArgumentException("Укажите HTTP- или HTTPS-адрес сервера с портом, например http://server:порт. Пароль вводится отдельно.");
-        if (string.IsNullOrWhiteSpace(UserName) || UserName.Contains(':') || UserName.Any(char.IsControl))
-            throw new ArgumentException("Укажите логин сотрудника без двоеточий и управляющих символов.");
-        if (TimeoutSeconds is < 1 or > 300) throw new ArgumentException("Таймаут должен быть от 1 до 300 секунд.");
         return new UriBuilder(uri) { Path = "/rk7api/v0/xmlinterface.xml" }.Uri;
     }
 }

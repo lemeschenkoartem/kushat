@@ -13,6 +13,7 @@ public sealed class LoginWindow : Window
     public string Password { get; private set; } = "";
     public string ProfileName { get; private set; } = "";
     public bool RememberLogin { get; private set; }
+    public ConnectionReport? ServerReport { get; private set; }
 
     public LoginWindow(AppSettings saved, HttpClient http)
     {
@@ -41,6 +42,10 @@ public sealed class LoginWindow : Window
         panel.Children.Add(remember);
         panel.Children.Add(new TextBlock { Text = "Для каждого объекта укажите его адрес и порт. Сохранённый пароль защищён Windows и доступен этой учётной записи на этом компьютере.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16), Foreground = System.Windows.Media.Brushes.DimGray });
+        var checkButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) };
+        var checkServer = new Button { Content = "Проверить порт и сертификат" };
+        var certificates = new Button { Content = "Мастер сертификата…" };
+        checkButtons.Children.Add(checkServer); checkButtons.Children.Add(certificates); panel.Children.Add(checkButtons);
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) };
         panel.Children.Add(new ScrollViewer { Content = status, MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         var copyError = new Button { Content = "Скопировать ошибку", Visibility = Visibility.Collapsed,
@@ -80,6 +85,30 @@ public sealed class LoginWindow : Window
 
         CancellationTokenSource? pending = null;
         var closeRequested = false;
+        certificates.Click += (_, _) => CertificateToolsLauncher.OpenFrom(this, address.Text);
+        checkServer.Click += async (_, _) =>
+        {
+            if (pending is not null) return;
+            pending = new CancellationTokenSource();
+            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = profiles.IsEnabled =
+                login.IsEnabled = password.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = false;
+            status.Text = "Проверяем доступность порта и сертификат…";
+            try
+            {
+                var endpoint = new ReferenceConnection { ServerAddress = address.Text }.GetServerEndpoint();
+                ServerReport = await new ConnectionPreflight().CheckAsync(endpoint, 10, pending.Token);
+                status.Text = ServerReport.Text; copyError.Visibility = Visibility.Visible;
+            }
+            catch (OperationCanceledException) { status.Text = "Проверка отменена."; }
+            catch (Exception ex) when (ex is ArgumentException or System.IO.IOException) { status.Text = ConnectionDiagnostics.Describe(ex); }
+            finally
+            {
+                pending.Dispose(); pending = null;
+                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = profiles.IsEnabled =
+                    login.IsEnabled = password.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = true;
+                if (closeRequested) { password.Clear(); DialogResult = false; }
+            }
+        };
         Closing += (_, e) => { if (pending is not null) { e.Cancel = true; closeRequested = true; pending.Cancel(); } };
         cancel.Click += (_, _) =>
         {
@@ -90,7 +119,7 @@ public sealed class LoginWindow : Window
         {
             if (pending is not null) return;
             pending = new CancellationTokenSource();
-            connect.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
+            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
                 profiles.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = false;
             status.Text = "Проверка входа и чтение меню…"; copyError.Visibility = Visibility.Collapsed;
             var success = false;
@@ -98,7 +127,8 @@ public sealed class LoginWindow : Window
             {
                 var connection = new ReferenceConnection { ServerAddress = address.Text.Trim(), UserName = login.Text.Trim(),
                     TimeoutSeconds = saved.Connection.TimeoutSeconds };
-                var catalog = await new ReferenceServerClient(http).ConnectAsync(connection, password.Password, pending.Token);
+                var catalog = await new ReferenceConnectionWorkflow(http).ConnectAsync(connection, password.Password,
+                    result => { ServerReport = result; status.Text = result.Text + "\nПроверка входа и чтение меню…"; }, pending.Token);
                 Connection = connection; Catalog = catalog; Password = password.Password;
                 ProfileName = name.Text.Trim(); RememberLogin = remember.IsChecked == true; success = true;
             }
@@ -115,7 +145,7 @@ public sealed class LoginWindow : Window
             finally
             {
                 pending.Dispose(); pending = null;
-                connect.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
+                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
                     profiles.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = true;
                 if (closeRequested) { Password = ""; Catalog = null; password.Clear(); DialogResult = false; }
                 else if (success) { password.Clear(); DialogResult = true; }

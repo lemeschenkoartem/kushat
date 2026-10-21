@@ -5,6 +5,7 @@
   <PackageReference Include="xunit" Version="2.9.3" />
   <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1"><PrivateAssets>all</PrivateAssets></PackageReference>
   <ProjectReference Include="../../src/Kushat.Core/Kushat.Core.csproj" />
+  <Compile Include="../../tools/Kushat.CertificateTool/CertificateDiscovery.cs" Link="CertificateDiscovery.cs" />
   <Compile Include="../../tools/Kushat.CertificateTool/LocalCertificate.cs" Link="LocalCertificate.cs" />
   <Compile Include="../../tools/Kushat.CertificateTool/CertificateFiles.cs" Link="CertificateFiles.cs" />
   <Compile Include="../../src/Kushat.App/AppSettings.cs" Link="AppSettings.cs" />

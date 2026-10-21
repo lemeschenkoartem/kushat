@@ -16,6 +16,7 @@ public static class ConnectionDiagnostics
     // Never display raw transport messages, request headers, bodies or response bodies.
     public static string Describe(Exception error) => error switch
     {
+        ConnectionCheckException check => check.Message,
         ReferenceConnectionException connection => connection.Message,
         HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } =>
             "HTTP_401: Сервер отклонил авторизацию. Проверьте учётную запись HTTP/XML и пароль.",

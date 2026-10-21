@@ -14,6 +14,7 @@
    <Button x:Name="RefreshButton" Content="Обновить меню" Click="RefreshClick" DockPanel.Dock="Left"/>
    <Button x:Name="LogoutButton" Content="Выйти" Click="LogoutClick" DockPanel.Dock="Left" IsEnabled="False"/>
    <Button x:Name="DemoButton" Content="Демо-товары" Click="DemoClick" DockPanel.Dock="Left"/>
+   <Button x:Name="CertificatesButton" Content="Сертификат…" Click="CertificatesClick" DockPanel.Dock="Left"/>
    <Button x:Name="CancelButton" Content="Отменить загрузку" Click="CancelClick" Visibility="Collapsed" DockPanel.Dock="Left"/>
    <TextBox x:Name="SearchBox" TextChanged="SearchChanged" ToolTip="Поиск по наименованию или коду" MinWidth="120"/>
   </DockPanel>

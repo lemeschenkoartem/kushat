@@ -5,12 +5,16 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>Kushat</AssemblyName>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <ApplicationIcon>Assets/Kushat.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Kushat.Core/Kushat.Core.csproj" />
     <Resource Include="Assets/Kushat.ico" />
+    <Compile Include="../../tools/Kushat.CertificateTool/CertificateFiles.cs" Link="CertificateTools/CertificateFiles.cs" />
+    <Compile Include="../../tools/Kushat.CertificateTool/LocalCertificate.cs" Link="CertificateTools/LocalCertificate.cs" />
+    <Compile Include="../../tools/Kushat.CertificateTool/ReferenceCertificateMaintenance.cs" Link="CertificateTools/ReferenceCertificateMaintenance.cs" />
+    <Compile Include="../../tools/Kushat.CertificateTool/CertificateDiscovery.cs" Link="CertificateTools/CertificateDiscovery.cs" />
   </ItemGroup>
 </Project>

@@ -10,6 +10,7 @@ dotnet publish src/Kushat.App/Kushat.App.csproj -c Release -r $Runtime --self-co
     -p:DebugType=None -p:DebugSymbols=false -o "artifacts/reference-$Runtime" --nologo
 if ($LASTEXITCODE -ne 0) { throw "Ошибка сборки." }
 Copy-Item README.md "artifacts/reference-$Runtime/README.md"
+Copy-Item scripts/Certificate-Wizard.cmd "artifacts/reference-$Runtime/Certificate-Wizard.cmd"
 Copy-Item examples "artifacts/reference-$Runtime/examples" -Recurse -Force
 Copy-Item docs "artifacts/reference-$Runtime/docs" -Recurse -Force
 [xml]$project = Get-Content src/Kushat.App/Kushat.App.csproj -Raw

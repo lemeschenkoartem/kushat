@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private string? priceTypeId;
     private bool changingPriceType;
     private bool settingsWritable;
+    private ConnectionReport? serverReport;
     private CancellationTokenSource? loading;
 
     public MainWindow()
@@ -98,7 +99,8 @@ public partial class MainWindow : Window
         SetBusy(true); StatusText.Text = automatic ? "Автоматический вход и загрузка свежих цен…" : "Загрузка меню из реф-сервера…";
         try
         {
-            var result = await new ReferenceServerClient(http).ConnectAsync(settings.Connection, credential, loading.Token);
+            var result = await new ReferenceConnectionWorkflow(http).ConnectAsync(settings.Connection, credential,
+                report => { serverReport = report; StatusText.Text = report.Summary + " Загрузка меню…"; }, loading.Token);
             AcceptCatalog(result, automatic ? null : priceTypeId);
         }
         catch (OperationCanceledException)
@@ -120,7 +122,7 @@ public partial class MainWindow : Window
     {
         RefreshButton.IsEnabled = DemoButton.IsEnabled = ProductsGrid.IsEnabled =
             ConnectButton.IsEnabled = PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled =
-            PreviewButton.IsEnabled = PrintButton.IsEnabled = !busy;
+            PreviewButton.IsEnabled = PrintButton.IsEnabled = CertificatesButton.IsEnabled = !busy;
         LogoutButton.IsEnabled = !busy && !string.IsNullOrEmpty(credential);
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -162,6 +164,7 @@ public partial class MainWindow : Window
         var dialog = new LoginWindow(settings, http) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         credential = dialog.Password;
+        serverReport = dialog.ServerReport;
         LoginEnvelope? savedLogin = null;
         if (dialog.RememberLogin)
         {
@@ -181,6 +184,7 @@ public partial class MainWindow : Window
     {
         catalog = result; catalogLoadedAt = DateTime.Now; priceTypeId = null;
         ConnectionText.Text = $"Сервер: {settings.Connection.ServerAddress} · работник: {settings.Connection.UserName}";
+        if (serverReport?.Certificate is { } cert) ConnectionText.Text += $" · Сертификат до {cert.ValidUntilUtc:dd.MM.yyyy}";
         ReplaceProducts([], false);
         changingPriceType = true;
         PriceTypeBox.ItemsSource = result.PriceTypes;
@@ -258,6 +262,7 @@ public partial class MainWindow : Window
     }
 
     private void ReloadPrintersClick(object sender, RoutedEventArgs e) => LoadPrinters();
+    private void CertificatesClick(object sender, RoutedEventArgs e) => CertificateToolsLauncher.OpenFrom(this, settings.Connection.ServerAddress);
     private void PrinterChanged(object sender, SelectionChangedEventArgs e)
     { if (PrinterBox.SelectedItem is string name) { settings.PrinterName = name; SaveSettings(); } }
 
