@@ -16,6 +16,10 @@ public static class ThemeManager
         var resources = new Dictionary<string, Brush> { ["AppBackgroundBrush"] = new LinearGradientBrush(ColorOf(colors[0]), ColorOf(colors[1]), 45) };
         string[] names = ["SurfaceBrush", "SurfaceAltBrush", "TextBrush", "MutedBrush", "AccentBrush", "AccentSoftBrush", "BorderBrush"];
         for (var i = 0; i < names.Length; i++) resources[names[i]] = new SolidColorBrush(ColorOf(colors[i + 2]));
+        window.Resources[SystemColors.HighlightBrushKey] = resources["AccentSoftBrush"];
+        window.Resources[SystemColors.HighlightTextBrushKey] = resources["TextBrush"];
+        window.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = resources["AccentSoftBrush"];
+        window.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = resources["TextBrush"];
         foreach (var (key, brush) in resources) { window.Resources[key] = brush; if (Application.Current is { } app) app.Resources[key] = brush; }
     }
     private static Color ColorOf(string value) => (Color)ColorConverter.ConvertFromString(value);

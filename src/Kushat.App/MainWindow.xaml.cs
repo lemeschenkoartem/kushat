@@ -41,7 +41,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Title = $"Кушать · Печать ценников · {App.DisplayVersion}";
-        Width = Math.Min(1320, SystemParameters.WorkArea.Width - 24);
+        Width = Math.Max(MinWidth, Math.Min(1380, SystemParameters.WorkArea.Width - 24));
+        Height = Math.Max(MinHeight, Math.Min(900, SystemParameters.WorkArea.Height - 24));
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
         view = CollectionViewSource.GetDefaultView(rows);
         view.Filter = item => item is ProductRow row && menuBrowser.Matches(row.Product, SearchBox.Text);
         ProductsGrid.ItemsSource = view;

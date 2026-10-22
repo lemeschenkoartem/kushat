@@ -246,15 +246,28 @@ public class WindowsBehaviorTests
             var window=new MainWindow(settings,false) {Width=width,Height=height};
             try
             {
+                window.AcceptCatalog(new ReferenceCatalog([new("3","Основной")],[
+                    new("piece","Борщ с мясом свинина",new Dictionary<string,decimal>{{"3",145}},SaleUnit.Piece,MenuGroupId:"hot"),
+                    new("weight","Каша молочная овсяная",new Dictionary<string,decimal>{{"3",350}},SaleUnit.Kilogram,MenuGroupId:"hot")
+                ],[new("hot","Первые блюда")]),null);
+                var products=(DataGrid)window.FindName("ProductsGrid");
+                var productRows=((System.ComponentModel.ICollectionView)products.ItemsSource).Cast<ProductRow>().ToArray();
+                foreach(var row in productRows) row.IsSelected=true;
+                if(width>=1080) window.MinWidth=width;
                 window.Show(); window.UpdateLayout();
+                window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 Assert.Null(window.FindName("DemoButton")); Assert.Null(window.FindName("CertificatesButton"));
                 var card=(Border)window.FindName("PrintCard");
-                Assert.Equal(width<1080?1:0,Grid.GetRow(card));
+                Assert.Equal(window.ActualWidth<1080?1:0,Grid.GetRow(card));
                 var preview=(Button)window.FindName("PreviewButton"); var print=(Button)window.FindName("PrintButton");
                 Assert.True(preview.IsVisible); Assert.True(print.IsVisible);
                 Assert.True(preview.ActualWidth>150); Assert.True(print.ActualHeight>20);
                 var expander=(SmoothExpander)window.FindName("LabelSettings"); Assert.False(expander.IsExpanded);
-                expander.IsExpanded=true; window.UpdateLayout(); expander.IsExpanded=false; window.UpdateLayout();
+                expander.IsExpanded=true; PumpFor(TimeSpan.FromMilliseconds(260)); window.UpdateLayout();
+                var body=LogicalChildren(expander).OfType<TextBox>().FirstOrDefault(); Assert.NotNull(body);
+                Assert.True(body.IsVisible);
+                expander.IsExpanded=false; PumpFor(TimeSpan.FromMilliseconds(260)); window.UpdateLayout();
+                Assert.False(body.IsVisible);
                 var widthBox=(TextBox)window.FindName("LabelWidthBox"); Assert.Equal("80",widthBox.Text);
                 widthBox.Text="0"; Assert.False(preview.IsEnabled); Assert.False(print.IsEnabled);
                 widthBox.Text="60"; Assert.True(preview.IsEnabled);
@@ -272,6 +285,12 @@ public class WindowsBehaviorTests
                     var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder(); encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
                     var directory=System.IO.Path.Combine(workspace,"artifacts","ui"); System.IO.Directory.CreateDirectory(directory);
                     using var output=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}.png")); encoder.Save(output);
+                    print.BringIntoView(); PumpFor(TimeSpan.FromMilliseconds(100)); window.UpdateLayout();
+                    var bounds=print.TransformToAncestor(window).TransformBounds(new Rect(new Point(),print.RenderSize));
+                    Assert.True(bounds.Top>=0 && bounds.Bottom<=window.ActualHeight,$"Print action outside viewport: {bounds}");
+                    var printImage=new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); printImage.Render(window);
+                    var printEncoder=new System.Windows.Media.Imaging.PngBitmapEncoder(); printEncoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(printImage));
+                    using var printOutput=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}-print.png")); printEncoder.Save(printOutput);
                 }
 
             }
@@ -293,6 +312,14 @@ public class WindowsBehaviorTests
             yield return child;
             foreach (var descendant in LogicalChildren(child)) yield return descendant;
         }
+    }
+
+    private static void PumpFor(TimeSpan duration)
+    {
+        var frame=new System.Windows.Threading.DispatcherFrame();
+        var timer=new System.Windows.Threading.DispatcherTimer {Interval=duration};
+        timer.Tick+=(_,_)=> {timer.Stop();frame.Continue=false;}; timer.Start();
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
     }
 
     private static void Sta(Action action)
