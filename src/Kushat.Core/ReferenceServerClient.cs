@@ -145,8 +145,8 @@ public sealed class ReferenceServerClient(HttpClient http)
                 if (typeId.Length == 0 || !decimal.TryParse(attribute.Value,
                     NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var price) || price < 0)
                     throw new FormatException("В меню обнаружена некорректная цена. Загрузка остановлена.");
-                // Keep conversion precision so the 100 g price is not derived from an already rounded kg price.
-                try { prices.Add(typeId, price / measurement.PriceDivisor); }
+                // Native PRICETYPES money is in kopecks. Convert once to rubles, then apply portion/weight conversion without intermediate rounding.
+                try { prices.Add(typeId, (price / 100m) / measurement.PriceDivisor); }
                 catch (OverflowException) { throw new FormatException("Цена после пересчёта выходит за допустимый диапазон."); }
             }
             result.Add(new ReferenceItem(id, Required(item, "Name"), prices, measurement.Unit, measurement.Error, ParentId(item)));

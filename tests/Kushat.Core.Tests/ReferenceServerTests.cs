@@ -12,7 +12,7 @@ public class ReferenceServerTests
     private static ReferenceConnection Connection() => new() { ServerAddress = "https://reference.test:7443", UserName = "employee" };
     private static string Response(string items) => "<RK7QueryResult Status=\"Ok\"><CommandResult CMD=\"GetRefData\" Status=\"Ok\"><RK7Reference><Items>" + items + "</Items></RK7Reference></CommandResult></RK7QueryResult>";
     private static readonly string Types = Response("<Item Ident=\"3\" Name=\"Основная\"/><Item Ident=\"5\" Name=\"Доставка\"/>");
-    private static readonly string Menu = Response("<Item Ident=\"100\" Name=\"Оливье\" PriceMode=\"pmPerUnitOfWeight\" PortionName=\"кг\" PRICETYPES-3=\"850.55\" PRICETYPES-5=\"900.00\"/><Item Ident=\"200\" Name=\"Плов\" PriceMode=\"pmPerPiece\" PRICETYPES-3=\"650.00\"/>");
+    private static readonly string Menu = Response("<Item Ident=\"100\" Name=\"Оливье\" PriceMode=\"pmPerUnitOfWeight\" PortionName=\"кг\" PRICETYPES-3=\"85055.00\" PRICETYPES-5=\"90000.00\"/><Item Ident=\"200\" Name=\"Плов\" PriceMode=\"pmPerPiece\" PRICETYPES-3=\"65000.00\"/>");
 
     [Theory]
     [InlineData("reference.test:8080", "http://reference.test:8080/rk7api/v0/xmlinterface.xml")]
@@ -90,8 +90,8 @@ public class ReferenceServerTests
     [InlineData("<Item Ident=\"1\" Name=\"Товар\"/>")]
     [InlineData("<Item Ident=\"1\" Name=\"Товар\" PRICETYPES-3=\"-1\"/>")]
     [InlineData("<Item Ident=\"1\" Name=\"Товар\" PRICETYPES-3=\"85,5\"/>")]
-    [InlineData("<Item Ident=\"1\" Name=\"\" PRICETYPES-3=\"1\"/>")]
-    [InlineData("<Item Ident=\"1\" Name=\"А\" PRICETYPES-3=\"1\"/><Item Ident=\"1\" Name=\"Б\" PRICETYPES-3=\"2\"/>")]
+    [InlineData("<Item Ident=\"1\" Name=\"\" PRICETYPES-3=\"100\"/>")]
+    [InlineData("<Item Ident=\"1\" Name=\"А\" PRICETYPES-3=\"100\"/><Item Ident=\"1\" Name=\"Б\" PRICETYPES-3=\"200\"/>")]
     public void RefusesInvalidPricesAndDuplicateIdentities(string items) =>
         Assert.Throws<FormatException>(() => ReferenceServerClient.ParseMenu(XDocument.Parse(Response(items))));
 
@@ -100,7 +100,7 @@ public class ReferenceServerTests
     {
         var items = ReferenceServerClient.ParseMenu(XDocument.Parse(Response(
             "<Item Ident=\"1\" Name=\"Активный\" Status=\"rsActive\" PRICETYPES-3=\"0\" PRICETYPES-5=\"\"/>" +
-            "<Item Ident=\"2\" Name=\"Удалённый\" Status=\"rsDeleted\" PRICETYPES-3=\"2\"/>")));
+            "<Item Ident=\"2\" Name=\"Удалённый\" Status=\"rsDeleted\" PRICETYPES-3=\"200\"/>")));
         Assert.Single(items); Assert.Equal(0m, items[0].Prices["3"]);
         Assert.False(items[0].Prices.ContainsKey("5"));
     }

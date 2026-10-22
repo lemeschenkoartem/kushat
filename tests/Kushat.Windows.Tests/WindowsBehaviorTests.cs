@@ -173,10 +173,16 @@ public class WindowsBehaviorTests
     {
         Sta(() =>
         {
-            var window = new MainWindow();
+            var window = new MainWindow(new AppSettings(), false);
             try
             {
-                ((Button)window.FindName("DemoButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.AcceptCatalog(new ReferenceCatalog([new("3","Основной")], [
+                    new("demo-1","Салат Оливье",new Dictionary<string,decimal>{{"3",850}},SaleUnit.Kilogram,MenuGroupId:"salads"),
+                    new("demo-2","Плов",new Dictionary<string,decimal>{{"3",650}},SaleUnit.Kilogram,MenuGroupId:"hot"),
+                    new("demo-3","Пирожок",new Dictionary<string,decimal>{{"3",55}},SaleUnit.Piece,MenuGroupId:"bakery"),
+                    new("demo-4","Пюре",new Dictionary<string,decimal>{{"3",315.55m}},SaleUnit.Kilogram,MenuGroupId:"hot"),
+                    new("demo-5","Салат овощной",new Dictionary<string,decimal>{{"3",420}},SaleUnit.Kilogram,MenuGroupId:"salads")
+                ], [new("kitchen","Кухня"),new("salads","Салаты","kitchen"),new("hot","Горячие блюда","kitchen"),new("bakery","Выпечка")]),null);
                 var grid = (DataGrid)window.FindName("ProductsGrid");
                 var view = Assert.IsAssignableFrom<System.ComponentModel.ICollectionView>(grid.ItemsSource);
                 var all = view.Cast<ProductRow>().ToArray(); Assert.Equal(5, all.Length);
@@ -206,6 +212,70 @@ public class WindowsBehaviorTests
                 Assert.Null(window.FindName("WeightPriceBox"));
             }
             finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData("classic")] [InlineData("large-100g")] [InlineData("accent")] [InlineData("chalkboard")] [InlineData("cafe")]
+    public void CustomPhysicalLabelKeepsAllTextAndExactPriceWithinBounds(string id)
+    {
+        Sta(() =>
+        {
+            var geometry=LabelLayout.Geometry(80,50);
+            var label=LabelDocument.CreateLabel(new("1","Борщ с мясом свинина",145,SaleUnit.Piece),false,LabelTemplates.Find(id),layout:geometry);
+            label.Measure(new Size(label.Width,label.Height)); label.Arrange(new Rect(0,0,label.Width,label.Height)); label.UpdateLayout();
+            Assert.Equal(LabelDocument.Mm(80),label.ActualWidth,4); Assert.Equal(LabelDocument.Mm(50),label.ActualHeight,4);
+            var blocks=LogicalChildren(label).OfType<TextBlock>().ToArray();
+            Assert.Contains(blocks,b=>b.Text=="145,00 ₽");
+            foreach(var block in blocks)
+            {
+                var bounds=block.TransformToAncestor(label).TransformBounds(new Rect(new Point(),block.RenderSize));
+                Assert.True(bounds.Left>=-0.5 && bounds.Top>=-0.5 && bounds.Right<=label.ActualWidth+0.5 && bounds.Bottom<=label.ActualHeight+0.5,$"{id}: {block.Text}: {bounds}");
+            }
+            var document=LabelDocument.Create(LabelLayout.Create([new(new("1","Товар",145,SaleUnit.Piece),13)],geometry),false,layout:geometry);
+            Assert.Equal(2,document.Pages.Count); Assert.Equal(geometry,LabelDocument.GeometryOf(document));
+        });
+    }
+    [Theory]
+    [InlineData("mint",1380,900)] [InlineData("indigo",1024,768)] [InlineData("graphite",640,480)]
+    public void ResizingAndThemesKeepControlsReachableAndPresetsApply(string theme,double width,double height)
+    {
+        Sta(() =>
+        {
+            var settings=new AppSettings {ThemeId=theme}; settings.Normalize(); settings.SaveLabelPreset("Мой","chalkboard",80,50);
+            var window=new MainWindow(settings,false) {Width=width,Height=height};
+            try
+            {
+                window.Show(); window.UpdateLayout();
+                Assert.Null(window.FindName("DemoButton")); Assert.Null(window.FindName("CertificatesButton"));
+                var card=(Border)window.FindName("PrintCard");
+                Assert.Equal(width<1080?1:0,Grid.GetRow(card));
+                var preview=(Button)window.FindName("PreviewButton"); var print=(Button)window.FindName("PrintButton");
+                Assert.True(preview.IsVisible); Assert.True(print.IsVisible);
+                Assert.True(preview.ActualWidth>150); Assert.True(print.ActualHeight>20);
+                var expander=(SmoothExpander)window.FindName("LabelSettings"); Assert.False(expander.IsExpanded);
+                expander.IsExpanded=true; window.UpdateLayout(); expander.IsExpanded=false; window.UpdateLayout();
+                var widthBox=(TextBox)window.FindName("LabelWidthBox"); Assert.Equal("80",widthBox.Text);
+                widthBox.Text="0"; Assert.False(preview.IsEnabled); Assert.False(print.IsEnabled);
+                widthBox.Text="60"; Assert.True(preview.IsEnabled);
+                ((TextBox)window.FindName("PresetNameBox")).Text="Новый";
+                var save=LogicalChildren(window).OfType<Button>().Single(b=>Equals(b.Content,"Сохранить шаблон")); save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(2,settings.LabelPresets.Count); Assert.Equal(60,settings.LabelPresets.Last().WidthMm);
+                ((ComboBox)window.FindName("PresetBox")).SelectedValue=settings.LabelPresets.First().Id;
+                Assert.Equal("80",widthBox.Text);
+                Assert.Equal(theme,settings.ThemeId);
+                if (Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is { } workspace)
+                {
+                    window.UpdateLayout();
+                    var image=new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
+                    image.Render(window);
+                    var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder(); encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                    var directory=System.IO.Path.Combine(workspace,"artifacts","ui"); System.IO.Directory.CreateDirectory(directory);
+                    using var output=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}.png")); encoder.Save(output);
+                }
+
+            }
+            finally {window.Close();}
         });
     }
 

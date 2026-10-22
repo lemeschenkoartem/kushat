@@ -40,7 +40,7 @@ public class MenuBrowserTests
     [Fact]
     public void ParentLinksSurvivePriceSelectionAndStandardPortionConversion()
     {
-        var xml = Response("<Item Ident=\"1\" Name=\"Оливье\" Parent=\"salads\" PriceMode=\"pmPerPortion\" PortionName=\"кг\" PortionWeight=\"250\" PRICETYPES-3=\"350\"/>", "MENUITEMS");
+        var xml = Response("<Item Ident=\"1\" Name=\"Оливье\" Parent=\"salads\" PriceMode=\"pmPerPortion\" PortionName=\"кг\" PortionWeight=\"250\" PRICETYPES-3=\"35000\"/>", "MENUITEMS");
         var catalog = new ReferenceCatalog([new("3", "Основной")], ReferenceServerClient.ParseMenu(XDocument.Parse(xml)), Groups);
         var product = Assert.Single(catalog.SelectPriceType("3").Products);
         Assert.Equal("salads", product.MenuGroupId); Assert.Equal(140m, product.PricePer100Grams);
@@ -114,7 +114,7 @@ public class MenuBrowserTests
             if (reference == "CategList") return new(status) { Content = new StringContent("private-response") };
             return new(HttpStatusCode.OK) { Content = new StringContent(reference == "PriceTypes"
                 ? Response("<Item Ident=\"3\" Name=\"Основной\"/>", "PRICETYPES")
-                : Response("<Item Ident=\"1\" Name=\"Товар\" PriceMode=\"pmPerPiece\" Parent=\"g\" PRICETYPES-3=\"55\"/>", "MENUITEMS"), Encoding.UTF8, "application/xml") };
+                : Response("<Item Ident=\"1\" Name=\"Товар\" PriceMode=\"pmPerPiece\" Parent=\"g\" PRICETYPES-3=\"5500\"/>", "MENUITEMS"), Encoding.UTF8, "application/xml") };
         }));
         var catalog = await new ReferenceServerClient(http).ConnectAsync(new() { ServerAddress = "http://reference.test:8010", UserName = "labels" }, "password");
         Assert.Single(catalog.SelectPriceType("3").Products); Assert.Empty(catalog.MenuGroups);

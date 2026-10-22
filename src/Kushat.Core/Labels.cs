@@ -22,7 +22,10 @@ public sealed record LabelPage(IReadOnlyList<LabelSlot> Slots);
 
 public enum LabelOrientation { Portrait, Landscape }
 
-public sealed record LabelGeometry(double PageWidthMm, double PageHeightMm, double LabelWidthMm, double LabelHeightMm, double LeftMm, double TopMm);
+public sealed record LabelGeometry(double PageWidthMm, double PageHeightMm, double LabelWidthMm, double LabelHeightMm, double LeftMm, double TopMm, int Columns = 2, int Rows = 2)
+{
+    public int Capacity => Columns * Rows;
+}
 
 public static class LabelLayout
 {
@@ -35,8 +38,10 @@ public static class LabelLayout
     public const double LeftMm = 5;
     public const double TopMm = 8.5;
 
-    public static IReadOnlyList<LabelPage> Create(IEnumerable<LabelOrder> orders)
+    public static IReadOnlyList<LabelPage> Create(IEnumerable<LabelOrder> orders, LabelGeometry? geometry = null)
     {
+        geometry ??= Geometry();
+        if (geometry.Capacity < 1 || geometry.Columns < 1 || geometry.Rows < 1) throw new ArgumentException("Неверная раскладка ценников.");
         var labels = new List<Product>();
         foreach (var order in orders)
         {
@@ -50,8 +55,8 @@ public static class LabelLayout
             labels.AddRange(Enumerable.Repeat(order.Product, order.Quantity));
         }
         if (labels.Count == 0) throw new ArgumentException("Выберите хотя бы один товар.");
-        return labels.Chunk(4).Select(chunk => new LabelPage(chunk.Select((p, i) =>
-            new LabelSlot(p, i / 2, i % 2)).ToArray())).ToArray();
+        return labels.Chunk(geometry.Capacity).Select(chunk => new LabelPage(chunk.Select((p, i) =>
+            new LabelSlot(p, i / geometry.Columns, i % geometry.Columns)).ToArray())).ToArray();
     }
 
     public static LabelGeometry Geometry(LabelOrientation orientation = LabelOrientation.Portrait) => orientation switch
@@ -61,12 +66,31 @@ public static class LabelLayout
         _ => throw new ArgumentException("Неизвестная ориентация ценника.")
     };
 
-    public static bool FitsImageableArea(double x, double y, double width, double height, LabelOrientation orientation = LabelOrientation.Portrait)
+    public static LabelGeometry Geometry(double widthMm, double heightMm)
+    {
+        if (!double.IsFinite(widthMm) || !double.IsFinite(heightMm) || widthMm < 20 || heightMm < 20 || widthMm > 287 || heightMm > 287)
+            throw new ArgumentException("Ширина и высота: от 20 до 287 мм. Ценник должен помещаться на А4 с полями 5 мм.");
+        LabelGeometry Candidate(double pageWidth, double pageHeight)
+        {
+            var columns = (int)Math.Floor((pageWidth - 10 + 0.000001) / widthMm);
+            var rows = (int)Math.Floor((pageHeight - 10 + 0.000001) / heightMm);
+            return new(pageWidth, pageHeight, widthMm, heightMm, (pageWidth - columns * widthMm) / 2,
+                (pageHeight - rows * heightMm) / 2, columns, rows);
+        }
+        var portrait = Candidate(210, 297); var landscape = Candidate(297, 210);
+        var best = landscape.Capacity > portrait.Capacity || landscape.Capacity == portrait.Capacity && widthMm > heightMm ? landscape : portrait;
+        if (best.Capacity == 0) throw new ArgumentException("Ценник такого размера не помещается на А4. Уменьшите ширину или высоту.");
+        return best;
+    }
+
+    public static bool FitsImageableArea(double x, double y, double width, double height, LabelOrientation orientation = LabelOrientation.Portrait) =>
+        FitsImageableArea(x, y, width, height, Geometry(orientation));
+
+    public static bool FitsImageableArea(double x, double y, double width, double height, LabelGeometry geometry)
     {
         const double tolerance = 0.2;
-        var geometry = Geometry(orientation);
         return x <= geometry.LeftMm + tolerance && y <= geometry.TopMm + tolerance &&
-            x + width >= geometry.LeftMm + 2 * geometry.LabelWidthMm - tolerance &&
-            y + height >= geometry.TopMm + 2 * geometry.LabelHeightMm - tolerance;
+            x + width >= geometry.LeftMm + geometry.Columns * geometry.LabelWidthMm - tolerance &&
+            y + height >= geometry.TopMm + geometry.Rows * geometry.LabelHeightMm - tolerance;
     }
 }

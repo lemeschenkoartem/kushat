@@ -11,12 +11,16 @@ namespace Kushat.App;
 
 public static class LabelDocument
 {
+    private static readonly DependencyProperty GeometryProperty = DependencyProperty.RegisterAttached("Geometry", typeof(LabelGeometry), typeof(LabelDocument));
+    public static LabelGeometry GeometryOf(FixedDocument document) => (LabelGeometry?)document.GetValue(GeometryProperty) ?? LabelLayout.Geometry();
+
     public static double Mm(double mm) => mm * 96 / 25.4;
 
-    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait)
+    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait, LabelGeometry? layout = null)
     {
         var document = new FixedDocument();
-        var geometry = LabelLayout.Geometry(orientation);
+        var geometry = layout ?? LabelLayout.Geometry(orientation);
+        document.SetValue(GeometryProperty, geometry);
         var size = new Size(Mm(geometry.PageWidthMm), Mm(geometry.PageHeightMm));
         document.DocumentPaginator.PageSize = size;
         foreach (var page in pages)
@@ -24,7 +28,8 @@ public static class LabelDocument
             var visual = new FixedPage { Width = size.Width, Height = size.Height, Background = Brushes.White };
             foreach (var slot in page.Slots)
             {
-                var label = CreateLabel(slot.Product, demo, template, orientation);
+                if (slot.Row < 0 || slot.Row >= geometry.Rows || slot.Column < 0 || slot.Column >= geometry.Columns) throw new ArgumentException("Ценник выходит за пределы листа.");
+                var label = CreateLabel(slot.Product, demo, template, orientation, geometry);
                 FixedPage.SetLeft(label, Mm(geometry.LeftMm + slot.Column * geometry.LabelWidthMm));
                 FixedPage.SetTop(label, Mm(geometry.TopMm + slot.Row * geometry.LabelHeightMm));
                 visual.Children.Add(label);
@@ -36,11 +41,24 @@ public static class LabelDocument
         return document;
     }
 
-    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait)
+    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait, LabelGeometry? layout = null)
     {
         if (!product.CanPrint) throw new ArgumentException("Не определена единица товара: " + product.Name);
         template ??= LabelTemplates.All[0];
-        var geometry = LabelLayout.Geometry(orientation);
+        var geometry = layout ?? LabelLayout.Geometry(orientation);
+        var scale = Math.Min(geometry.LabelWidthMm / 100, geometry.LabelHeightMm / 100);
+        if (Math.Abs(scale - 1) > 0.000001)
+        {
+            var design = geometry with { LabelWidthMm = geometry.LabelWidthMm / scale, LabelHeightMm = geometry.LabelHeightMm / scale };
+            var inner = CreateDesignLabel(product, demo, template, design);
+            return new Border { Width = Mm(geometry.LabelWidthMm), Height = Mm(geometry.LabelHeightMm), Background = inner.Background,
+                Child = new Viewbox { Stretch = Stretch.Uniform, Child = inner } };
+        }
+        return CreateDesignLabel(product, demo, template, geometry);
+    }
+
+    private static Border CreateDesignLabel(Product product, bool demo, LabelTemplate template, LabelGeometry geometry)
+    {
         var prices = LabelPrices.For(product, WeightPriceMode.HundredGrams);
         var accent = new SolidColorBrush(Color.FromRgb(33, 92, 69));
         var chalk = template.Style == LabelStyle.Chalkboard;
@@ -103,7 +121,7 @@ public static class LabelDocument
                         CornerRadius = new CornerRadius(0, 0, 5, 5) });
                 var header = new StackPanel { Margin = new Thickness(0, 0, 0, Mm(4)) };
                 header.Children.Add(awning);
-                header.Children.Add(new TextBlock { Text = "ЦЕННИК", FontSize = 18, FontWeight = FontWeights.SemiBold,
+                header.Children.Add(new TextBlock { Text = "ЦЕННИК", Foreground = Brushes.Black, FontSize = 18, FontWeight = FontWeights.SemiBold,
                     TextAlignment = TextAlignment.Center, Margin = new Thickness(0, Mm(3), 0, 0) });
                 grid.Children.Add(header);
                 AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 48);
@@ -158,8 +176,7 @@ public static class LabelDocument
         var ticket = queue.DefaultPrintTicket ?? new PrintTicket();
         ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
         var horizontal = document.DocumentPaginator.PageSize.Width > document.DocumentPaginator.PageSize.Height;
-        var orientation = horizontal ? LabelOrientation.Landscape : LabelOrientation.Portrait;
-        var geometry = LabelLayout.Geometry(orientation);
+        var geometry = GeometryOf(document);
         var pageOrientation = horizontal ? PageOrientation.Landscape : PageOrientation.Portrait;
         ticket.PageOrientation = pageOrientation;
         ticket.PageScalingFactor = 100;
@@ -177,8 +194,8 @@ public static class LabelDocument
             ?? throw new InvalidOperationException("Драйвер принтера не сообщил область печати.");
         const double toMm = 25.4 / 96;
         if (!LabelLayout.FitsImageableArea(area.OriginWidth * toMm, area.OriginHeight * toMm,
-            area.ExtentWidth * toMm, area.ExtentHeight * toMm, orientation))
-            throw new InvalidOperationException($"Поля принтера не позволяют разместить четыре ценника {geometry.LabelWidthMm} × {geometry.LabelHeightMm} мм на А4. Нужны поля слева/справа не более {geometry.LeftMm} мм и сверху/снизу не более {geometry.TopMm} мм.");
+            area.ExtentWidth * toMm, area.ExtentHeight * toMm, geometry))
+            throw new InvalidOperationException($"Поля принтера не позволяют разместить ценники {geometry.LabelWidthMm} × {geometry.LabelHeightMm} мм на А4. Нужны поля слева/справа не более {geometry.LeftMm} мм и сверху/снизу не более {geometry.TopMm} мм.");
         var dialog = new PrintDialog { PrintQueue = queue, PrintTicket = validated };
         dialog.PrintDocument(document.DocumentPaginator, $"Кушать — ценники {geometry.LabelWidthMm} × {geometry.LabelHeightMm} мм");
     }

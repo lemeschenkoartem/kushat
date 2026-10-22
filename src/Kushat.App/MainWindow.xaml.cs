@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Globalization;
 using System.Net.Http;
 using System.Printing;
 using System.Security.Cryptography;
@@ -33,7 +34,10 @@ public partial class MainWindow : Window
     private ConnectionReport? serverReport;
     private CancellationTokenSource? loading;
 
-    public MainWindow()
+    private bool initializing = true;
+    private LabelGeometry? labelGeometry;
+    public MainWindow() : this(null, true) { }
+    internal MainWindow(AppSettings? initialSettings, bool loadPrinters)
     {
         InitializeComponent();
         Title = $"Кушать · Печать ценников · {App.DisplayVersion}";
@@ -41,17 +45,23 @@ public partial class MainWindow : Window
         view = CollectionViewSource.GetDefaultView(rows);
         view.Filter = item => item is ProductRow row && menuBrowser.Matches(row.Product, SearchBox.Text);
         ProductsGrid.ItemsSource = view;
-        try { settings = SettingsStore.Load(); settingsWritable = true; }
+        try { settings = initialSettings ?? SettingsStore.Load(); settings.Normalize(); settingsWritable = initialSettings is null; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException)
         { ShowError("Не удалось прочитать настройки. Их можно задать заново. Файл: " + SettingsStore.FilePath); }
         TemplateBox.ItemsSource = LabelTemplates.All;
         TemplateBox.SelectedValue = settings.TemplateId;
-        OrientationBox.Items.Add(new ComboBoxItem { Content = "Вертикальный · 100 × 140 мм", Tag = LabelOrientation.Portrait });
-        OrientationBox.Items.Add(new ComboBoxItem { Content = "Горизонтальный · 140 × 100 мм", Tag = LabelOrientation.Landscape });
-        OrientationBox.SelectedValue = settings.LabelOrientation;
-        LoadPrinters(); UpdateSummary();
+        LabelWidthBox.Text = settings.LabelWidthMm!.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        LabelHeightBox.Text = settings.LabelHeightMm!.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        PresetBox.ItemsSource = settings.LabelPresets.ToArray(); PresetBox.SelectedValue = settings.ActiveLabelPresetId;
+        PresetNameBox.Text = settings.LabelPresets.FirstOrDefault(p => p.Id == settings.ActiveLabelPresetId)?.Name ?? "";
+        ThemeBox.ItemsSource = ThemeManager.All; ThemeBox.SelectedValue = settings.ThemeId;
+        ThemeManager.Apply(this, settings.ThemeId);
+        initializing = false;
+        ApplyDimensions();
+        if (loadPrinters) LoadPrinters(); UpdateSummary();
         MenuTree.ItemsSource = new[] { menuBrowser.Root }; UpdateMenuFilter();
-        Loaded += AutoConnectLoaded;
+        if (initialSettings is null) Loaded += AutoConnectLoaded;
+        UpdateResponsiveLayout();
     }
 
     private void SearchChanged(object sender, TextChangedEventArgs e) => UpdateMenuFilter();
@@ -92,10 +102,10 @@ public partial class MainWindow : Window
         MenuTree.ItemsSource = new[] { menuBrowser.Root };
         MenuNoticeText.Text = catalog?.GroupWarning ?? (menuBrowser.HasIncompleteHierarchy
             ? "Часть групп показана на верхнем уровне: структура меню неполная."
-            : materialized.Length == 0 ? "Загрузите меню или откройте демо-товары."
+            : materialized.Length == 0 ? "Загрузите меню из R-Keeper."
             : "Выберите ветку. Поиск работает внутри неё и её подветок.");
         UpdateMenuFilter();
-        demo = isDemo; loadedAt = sourceTime ?? DateTime.Now; UpdateSummary();
+        demo = isDemo; loadedAt = sourceTime ?? DateTime.Now; UpdateSummary(); UpdateTemplatePreview();
     }
 
     private bool ConfirmReplace() => !rows.Any(r => r.IsSelected) || MessageBox.Show(this,
@@ -151,28 +161,17 @@ public partial class MainWindow : Window
 
     private void SetBusy(bool busy)
     {
-        RefreshButton.IsEnabled = DemoButton.IsEnabled = ProductsGrid.IsEnabled =
-            ConnectButton.IsEnabled = MenuTree.IsEnabled = PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled =
-            PreviewButton.IsEnabled = PrintButton.IsEnabled = CertificatesButton.IsEnabled = OrientationBox.IsEnabled = !busy;
+        RefreshButton.IsEnabled = ProductsGrid.IsEnabled = ConnectButton.IsEnabled = MenuTree.IsEnabled =
+            PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled = !busy;
+        PrinterSettings.IsEnabled = LabelSettings.IsEnabled = !busy;
+        PreviewButton.IsEnabled = PrintButton.IsEnabled = !busy && labelGeometry is not null;
         LogoutButton.IsEnabled = !busy && !string.IsNullOrEmpty(credential);
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void CancelClick(object sender, RoutedEventArgs e) => loading?.Cancel();
 
-    private void DemoClick(object sender, RoutedEventArgs e)
-    {
-        if (!ConfirmReplace()) return;
-        ClearSession();
-        ReplaceProducts([
-            new("demo-1", "Салат Оливье", 850m, MenuGroupId: "salads"), new("demo-2", "Плов с говядиной", 650m, MenuGroupId: "hot"),
-            new("demo-3", "Пирожок с капустой", 55m, SaleUnit.Piece, MenuGroupId: "bakery"), new("demo-4", "Картофельное пюре", 315.55m, MenuGroupId: "hot"),
-            new("demo-5", "Салат из свежих овощей с зеленью", 420m, MenuGroupId: "salads")
-        ], true, groups: [new("kitchen", "Кухня"), new("salads", "Салаты", "kitchen"), new("hot", "Горячие блюда", "kitchen"), new("bakery", "Выпечка")]);
-        StatusText.Text = "ДЕМО: товары и цены вымышлены. На каждом ценнике будет отметка «Демонстрационные данные».";
-    }
-
-    private void RowChanged(object? sender, PropertyChangedEventArgs e) => UpdateSummary();
+    private void RowChanged(object? sender, PropertyChangedEventArgs e) { UpdateSummary(); UpdateTemplatePreview(); }
 
     private void UpdateSummary()
     {
@@ -180,7 +179,7 @@ public partial class MainWindow : Window
         if (selected.Any(r => !r.TryQuantity(out _)))
         { SummaryText.Text = "Исправьте количество у выбранных товаров: целое число от 1 до 999."; return; }
         var count = selected.Sum(r => { r.TryQuantity(out var n); return n; });
-        SummaryText.Text = $"Выбрано товаров: {selected.Length}\nЦенников: {count}\nЛистов А4: {(count + 3) / 4}" +
+        SummaryText.Text = $"Выбрано товаров: {selected.Length}\nЦенников: {count}\nЛистов А4: {(count + (labelGeometry?.Capacity ?? 4) - 1) / (labelGeometry?.Capacity ?? 4)}" +
             (count > LabelLayout.MaxLabels ? "\nМаксимум 1000 ценников за раз." : "");
     }
 
@@ -211,7 +210,7 @@ public partial class MainWindow : Window
         AcceptCatalog(dialog.Catalog!, null);
     }
 
-    private void AcceptCatalog(ReferenceCatalog result, string? selectedType)
+    internal void AcceptCatalog(ReferenceCatalog result, string? selectedType)
     {
         catalog = result; catalogLoadedAt = DateTime.Now; priceTypeId = null;
         ConnectionText.Text = $"Сервер: {settings.Connection.ServerAddress} · работник: {settings.Connection.UserName}";
@@ -293,32 +292,97 @@ public partial class MainWindow : Window
     }
 
     private void ReloadPrintersClick(object sender, RoutedEventArgs e) => LoadPrinters();
-    private void CertificatesClick(object sender, RoutedEventArgs e) => CertificateToolsLauncher.OpenFrom(this);
     private void PrinterChanged(object sender, SelectionChangedEventArgs e)
     { if (PrinterBox.SelectedItem is string name) { settings.PrinterName = name; SaveSettings(); } }
 
     private void TemplateChanged(object sender, SelectionChangedEventArgs e)
     {
         if (TemplateBox.SelectedItem is not LabelTemplate template) return;
-        settings.TemplateId = template.Id;
-        TemplateDescription.Text = template.Description;
-        UpdateTemplatePreview();
-        SaveSettings();
+        settings.TemplateId = template.Id; TemplateDescription.Text = template.Description;
+        if (initializing) return;
+        ClearActivePreset(); UpdateTemplatePreview(); SaveSettings();
     }
-
-    private void OrientationChanged(object sender, SelectionChangedEventArgs e)
+    private void DimensionsChanged(object sender, TextChangedEventArgs e)
+    { if (!initializing) { ClearActivePreset(); ApplyDimensions(); } }
+    private void ClearActivePreset()
     {
-        if (OrientationBox.SelectedValue is not LabelOrientation orientation) return;
-        settings.LabelOrientation = orientation; UpdateTemplatePreview(); SaveSettings();
+        settings.ActiveLabelPresetId = null;
+        initializing = true; PresetBox.SelectedIndex = -1; initializing = false;
     }
-
+    private void ApplyDimensions()
+    {
+        try
+        {
+            if (!double.TryParse(LabelWidthBox.Text.Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var width) ||
+                !double.TryParse(LabelHeightBox.Text.Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var height))
+                throw new ArgumentException("Введите ширину и высоту в миллиметрах.");
+            labelGeometry = LabelLayout.Geometry(width, height);
+            settings.LabelWidthMm = width; settings.LabelHeightMm = height;
+            settings.LabelOrientation = width > height ? LabelOrientation.Landscape : LabelOrientation.Portrait;
+            FormatErrorText.Text = ""; SaveSettings();
+        }
+        catch (ArgumentException ex) { labelGeometry = null; FormatErrorText.Text = ex.Message; }
+        PreviewButton.IsEnabled = PrintButton.IsEnabled = labelGeometry is not null && loading is null;
+        UpdateTemplatePreview(); UpdateSummary();
+    }
+    private void SwapDimensionsClick(object sender, RoutedEventArgs e)
+    {
+        initializing = true;
+        (LabelWidthBox.Text, LabelHeightBox.Text) = (LabelHeightBox.Text, LabelWidthBox.Text);
+        initializing = false; ClearActivePreset(); ApplyDimensions();
+    }
+    private void SavePresetClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var geometry = labelGeometry ?? throw new ArgumentException("Сначала исправьте размер ценника.");
+            var preset = settings.SaveLabelPreset(PresetNameBox.Text, settings.TemplateId, geometry.LabelWidthMm, geometry.LabelHeightMm);
+            initializing = true; PresetBox.ItemsSource = settings.LabelPresets.ToArray(); PresetBox.SelectedValue = preset.Id; initializing = false;
+            PresetStatusText.Text = SaveSettings() ? "Шаблон сохранён. Он доступен при следующем запуске." : "Шаблон выбран для текущего сеанса.";
+        }
+        catch (ArgumentException ex) { PresetStatusText.Text = ex.Message; }
+    }
+    private void PresetChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializing || PresetBox.SelectedItem is not LabelPreset preset) return;
+        initializing = true;
+        settings.ActiveLabelPresetId = preset.Id; settings.TemplateId = preset.TemplateId;
+        TemplateBox.SelectedValue = preset.TemplateId; PresetNameBox.Text = preset.Name;
+        LabelWidthBox.Text = preset.WidthMm.ToString("0.##", CultureInfo.CurrentCulture);
+        LabelHeightBox.Text = preset.HeightMm.ToString("0.##", CultureInfo.CurrentCulture);
+        initializing = false; ApplyDimensions();
+    }
+    private void ThemeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializing || ThemeBox.SelectedItem is not UiTheme theme) return;
+        settings.ThemeId = theme.Id; ThemeManager.Apply(this, theme.Id); SaveSettings();
+    }
+    private void ProductFocusChanged(object sender, SelectionChangedEventArgs e) => UpdateTemplatePreview();
     private void UpdateTemplatePreview()
     {
-        TemplatePreview.Child = LabelDocument.CreateLabel(new Product("sample", "Салат Оливье", 850m), false,
-            LabelTemplates.Find(settings.TemplateId), settings.LabelOrientation);
-        var size = LabelLayout.Geometry(settings.LabelOrientation);
-        PreviewSizeText.Text = $"Образец оформления · {size.LabelWidthMm} × {size.LabelHeightMm} мм";
-        PrintFormatText.Text = $"А4 · {(settings.LabelOrientation == LabelOrientation.Landscape ? "альбомная" : "книжная")} ориентация\nМасштаб 100% · без подгонки\nРазмер ценника: {size.LabelWidthMm} × {size.LabelHeightMm} мм";
+        if (initializing || TemplatePreview is null) return;
+        if (labelGeometry is null) { TemplatePreview.Child = null; PreviewSizeText.Text = "Укажите допустимый размер ценника."; return; }
+        var product = (ProductsGrid.SelectedItem as ProductRow)?.Product;
+        if (product?.CanPrint != true) product = rows.FirstOrDefault(r => r.IsSelected && r.CanPrint)?.Product ?? view?.Cast<ProductRow>().FirstOrDefault(r => r.CanPrint)?.Product;
+        product ??= new Product("sample", "Название товара", 145m, SaleUnit.Piece);
+        try
+        {
+            TemplatePreview.Child = LabelDocument.CreateLabel(product, false, LabelTemplates.Find(settings.TemplateId), layout: labelGeometry);
+            PreviewSizeText.Text = $"{labelGeometry.LabelWidthMm:0.##} × {labelGeometry.LabelHeightMm:0.##} мм · {labelGeometry.Capacity} на А4 · 100%";
+        }
+        catch (ArgumentException ex) { TemplatePreview.Child = null; PreviewSizeText.Text = ex.Message; }
+    }
+    private void WindowResized(object sender, SizeChangedEventArgs e) => UpdateResponsiveLayout();
+    private void UpdateResponsiveLayout()
+    {
+        if (BodyGrid is null) return;
+        var stacked = ActualWidth > 0 && ActualWidth < 1080;
+        PrintColumn.Width = new GridLength(stacked ? 0 : 360);
+        Grid.SetColumn(PrintCard, stacked ? 0 : 1); Grid.SetRow(PrintCard, stacked ? 1 : 0);
+        CatalogPanel.Margin = new Thickness(0, 0, stacked ? 0 : 16, stacked ? 16 : 0);
+        CatalogPanel.Height = Math.Max(330, ActualHeight - 300);
+        PrintCard.Height = stacked ? double.NaN : CatalogPanel.Height;
+        MenuColumn.MaxWidth = stacked ? 180 : 300;
     }
 
     private FixedDocument BuildDocument()
@@ -328,7 +392,7 @@ public partial class MainWindow : Window
             if (!r.TryQuantity(out var quantity)) throw new ArgumentException("Исправьте количество у товара «" + r.Name + "».");
             return new LabelOrder(r.Product, quantity);
         });
-        return LabelDocument.Create(LabelLayout.Create(orders), demo, LabelTemplates.Find(settings.TemplateId), settings.LabelOrientation);
+        return LabelDocument.Create(LabelLayout.Create(orders, labelGeometry ?? throw new ArgumentException("Исправьте размер ценника.")), demo, LabelTemplates.Find(settings.TemplateId), layout: labelGeometry);
     }
 
     private void PreviewClick(object sender, RoutedEventArgs e)

@@ -22,6 +22,13 @@ jobs:
       - name: Test and build Windows ZIP
         shell: pwsh
         run: ./scripts/build-windows.ps1
+      - name: Upload interface previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kushat-UI-previews
+          path: artifacts/ui/*.png
+          if-no-files-found: ignore
       - name: Upload downloadable ZIP
         uses: actions/upload-artifact@v4
         with:

@@ -1,8 +1,1 @@
-<Application x:Class="Kushat.App.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
- xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
- <Application.Resources>
-  <Style TargetType="Window"><Setter Property="Icon" Value="/Kushat;component/Assets/Kushat.ico"/><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="FontSize" Value="14"/><Setter Property="Background" Value="#F4F6F8"/></Style>
-  <Style TargetType="Button"><Setter Property="Padding" Value="16,9"/><Setter Property="Margin" Value="0,0,8,0"/><Setter Property="Cursor" Value="Hand"/></Style>
-  <Style TargetType="TextBox"><Setter Property="Padding" Value="8,6"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style>
- </Application.Resources>
-</Application>
+<Application x:Class="Kushat.App.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Themes/Controls.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources></Application>

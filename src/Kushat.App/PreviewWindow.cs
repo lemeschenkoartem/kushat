@@ -19,7 +19,7 @@ public sealed class PreviewWindow : Window
         var button = new Button { Content = "Напечатать…", HorizontalAlignment = HorizontalAlignment.Right };
         button.Click += (_, _) => print();
         DockPanel.SetDock(button, Dock.Right); toolbar.Children.Add(button);
-        var geometry = LabelLayout.Geometry(document.DocumentPaginator.PageSize.Width > document.DocumentPaginator.PageSize.Height ? LabelOrientation.Landscape : LabelOrientation.Portrait);
+        var geometry = LabelDocument.GeometryOf(document);
         toolbar.Children.Add(new TextBlock { Text = $"Листов А4: {document.Pages.Count}. Размер ценника: {geometry.LabelWidthMm} × {geometry.LabelHeightMm} мм.",
             VerticalAlignment = VerticalAlignment.Center });
         DockPanel.SetDock(toolbar, Dock.Top); root.Children.Add(toolbar);
