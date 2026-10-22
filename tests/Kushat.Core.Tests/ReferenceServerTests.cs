@@ -43,7 +43,7 @@ public class ReferenceServerTests
     [Theory]
     [InlineData("http")]
     [InlineData("https")]
-    public async Task AuthenticatesEmployeeAndReadsBothReferences(string scheme)
+    public async Task AuthenticatesEmployeeAndReadsProductsPricesAndMenuGroups(string scheme)
     {
         var calls = new List<string>();
         using var http = new HttpClient(new StubHandler(async request =>
@@ -60,14 +60,16 @@ public class ReferenceServerTests
             Assert.Equal("1", (string?)command.Attribute("WithMacroProp"));
             var reference = (string)command.Attribute("RefName")!;
             calls.Add(reference);
-            return Xml(reference == "PriceTypes" ? Types : Menu);
+            Assert.Equal(reference == "CategList" ? "1" : "2", (string?)command.Attribute("WithChildItems"));
+            return Xml(reference == "PriceTypes" ? Types : reference == "CategList" ? Response("<Item Ident=\"10\" Name=\"Кухня\" Parent=\"0\"/>") : Menu);
         }));
         var connection = Connection();
         connection.ServerAddress = scheme + "://reference.test:7443";
         var catalog = await new ReferenceServerClient(http).ConnectAsync(connection, "test-password");
-        Assert.Equal(new[] { "PriceTypes", "MenuItems" }, calls);
+        Assert.Equal(new[] { "PriceTypes", "MenuItems", "CategList" }, calls);
         Assert.Equal(2, catalog.Items.Count);
         Assert.Equal(2, catalog.PriceTypes.Count);
+        Assert.Single(catalog.MenuGroups);
         var priced = catalog.SelectPriceType("3");
         Assert.Equal(850.55m, priced.Products[0].PricePerKg);
         Assert.Equal(85.06m, priced.Products[0].PricePer100Grams);

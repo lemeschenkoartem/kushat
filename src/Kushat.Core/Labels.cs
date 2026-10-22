@@ -1,6 +1,6 @@
 namespace Kushat.Core;
 
-public sealed record Product(string Id, string Name, decimal Price, SaleUnit Unit = SaleUnit.Kilogram, string? UnitError = null)
+public sealed record Product(string Id, string Name, decimal Price, SaleUnit Unit = SaleUnit.Kilogram, string? UnitError = null, string? MenuGroupId = null)
 {
     public decimal DisplayPrice => decimal.Round(Price, 2, MidpointRounding.AwayFromZero);
     public decimal PricePerKg => Unit == SaleUnit.Kilogram ? DisplayPrice : throw new InvalidOperationException("Товар не весовой.");

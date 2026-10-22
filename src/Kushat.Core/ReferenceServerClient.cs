@@ -21,10 +21,21 @@ public sealed class ReferenceServerClient(HttpClient http)
         timeout.CancelAfter(TimeSpan.FromSeconds(connection.TimeoutSeconds));
         var types = await ReadReferenceAsync(endpoint, connection.UserName.Trim(), password, "PriceTypes", timeout.Token);
         var menu = await ReadReferenceAsync(endpoint, connection.UserName.Trim(), password, "MenuItems", timeout.Token);
-        return new(ParsePriceTypes(types), ParseMenu(menu));
+        var priceTypes = ParsePriceTypes(types);
+        var items = ParseMenu(menu);
+        try
+        {
+            // CategList is the native menu-folder reference. Only its own hierarchy is needed.
+            var groups = await ReadReferenceAsync(endpoint, connection.UserName.Trim(), password, "CategList", timeout.Token, 1);
+            return new(priceTypes, items, ParseMenuGroups(groups));
+        }
+        catch (Exception ex) when (ex is FormatException or HttpRequestException { StatusCode: HttpStatusCode.Forbidden or HttpStatusCode.NotFound })
+        {
+            return new(priceTypes, items, [], "Ветки меню не загружены. Показан общий список товаров. Проверьте доступ к группам меню на Reference-сервере.");
+        }
     }
 
-    private async Task<XDocument> ReadReferenceAsync(Uri endpoint, string login, string password, string reference, CancellationToken ct)
+    private async Task<XDocument> ReadReferenceAsync(Uri endpoint, string login, string password, string reference, CancellationToken ct, int withChildItems = 2)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
@@ -32,7 +43,7 @@ public sealed class ReferenceServerClient(HttpClient http)
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/xml"));
         var command = new XElement("RK7Command", new XAttribute("CMD", "GetRefData"),
             new XAttribute("RefName", reference), new XAttribute("OnlyActive", "1"),
-            new XAttribute("WithChildItems", "2"), new XAttribute("WithMacroProp", "1"));
+            new XAttribute("WithChildItems", withChildItems.ToString(CultureInfo.InvariantCulture)), new XAttribute("WithMacroProp", "1"));
         request.Content = new StringContent(new XElement("RK7Query", command).ToString(SaveOptions.DisableFormatting),
             Encoding.UTF8, "application/xml");
         try { return await ReadResponseAsync(request, ct); }
@@ -138,12 +149,47 @@ public sealed class ReferenceServerClient(HttpClient http)
                 try { prices.Add(typeId, price / measurement.PriceDivisor); }
                 catch (OverflowException) { throw new FormatException("Цена после пересчёта выходит за допустимый диапазон."); }
             }
-            result.Add(new ReferenceItem(id, Required(item, "Name"), prices, measurement.Unit, measurement.Error));
+            result.Add(new ReferenceItem(id, Required(item, "Name"), prices, measurement.Unit, measurement.Error, ParentId(item)));
         }
         if (result.Count == 0) throw new FormatException("Реф-сервер вернул пустое меню.");
         if (!result.Any(i => i.Prices.Count > 0))
             throw new FormatException("Реф-сервер не вернул цены PRICETYPES-… в меню. Нужно проверить макросвойства XML-интерфейса или адаптировать чтение цен по ответу сервера.");
         return result;
+    }
+
+    public static IReadOnlyList<MenuGroup> ParseMenuGroups(XDocument document)
+    {
+        ValidateResponse(document);
+        var reference = (document.Root!.Element("CommandResult") ?? document.Root).Element("RK7Reference");
+        if (reference?.Attribute("Name") is { } name && !name.Value.Equals("CategList", StringComparison.OrdinalIgnoreCase))
+            throw new FormatException("В ответе получен другой справочник вместо групп меню.");
+        var groups = new Dictionary<string, MenuGroup>(StringComparer.Ordinal);
+        var pending = new Stack<(XElement Element, string? Parent)>();
+        foreach (var item in Items(document)) pending.Push((item, null));
+        while (pending.TryPop(out var entry))
+        {
+            var item = entry.Element;
+            if (item.Attribute("Status") is { Value: not "rsActive" }) continue;
+            var id = ((string?)item.Attribute("Ident") ?? (string?)item.Attribute("ItemIdent"))?.Trim();
+            if (string.IsNullOrEmpty(id)) throw new FormatException("У группы меню отсутствует идентификатор.");
+            var parent = item.Attribute("Parent") is not null || item.Attribute("MainParentIdent") is not null ? ParentId(item) : entry.Parent;
+            var group = new MenuGroup(id, Required(item, "Name"), parent);
+            if (groups.TryGetValue(id, out var previous) && previous != group)
+                throw new FormatException("Группа меню повторяется с разными свойствами.");
+            groups[id] = group;
+            // WithChildItems=1 nests groups here. Never interpret dishes, modifiers or arbitrary descendants as folders.
+            foreach (var child in item.Element("RIChildItems")?.Elements("TCategListItem") ?? [])
+                pending.Push((child, id));
+        }
+        return groups.Values.ToArray();
+    }
+
+    private static string? ParentId(XElement item)
+    {
+        var parent = (string?)item.Attribute("Parent");
+        if (string.IsNullOrWhiteSpace(parent)) parent = (string?)item.Attribute("MainParentIdent");
+        parent = parent?.Trim();
+        return string.IsNullOrEmpty(parent) || parent == "0" ? null : parent;
     }
 
     private static string Required(XElement item, string name)

@@ -1,5 +1,5 @@
 <Window x:Class="Kushat.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
- xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Кушать · Печать ценников" Width="1180" Height="780" MinWidth="950" MinHeight="650"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:core="clr-namespace:Kushat.Core;assembly=Kushat.Core" Title="Кушать · Печать ценников" Width="1180" Height="780" MinWidth="950" MinHeight="650"
  Closing="OnClosing">
  <Grid Margin="24">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -27,12 +27,37 @@
   <Grid Grid.Row="2">
    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="320"/></Grid.ColumnDefinitions>
    <Grid Margin="0,0,18,0">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+    <Grid.ColumnDefinitions><ColumnDefinition x:Name="MenuColumn" Width="190" MinWidth="0"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Border x:Name="MenuPanel" Background="White" BorderBrush="#DCE2E8" BorderThickness="1" Padding="10">
+     <DockPanel>
+      <TextBlock DockPanel.Dock="Top" Text="Ветки меню" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,10"/>
+      <TextBlock x:Name="MenuNoticeText" DockPanel.Dock="Bottom" TextWrapping="Wrap" Foreground="#526170" Margin="0,8,0,0"/>
+      <TreeView x:Name="MenuTree" BorderThickness="0" SelectedItemChanged="MenuBranchChanged" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+       <TreeView.ItemTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type core:MenuBranch}" ItemsSource="{Binding Children}">
+         <TextBlock Text="{Binding Title}" ToolTip="{Binding Path}" Margin="0,4"/>
+        </HierarchicalDataTemplate>
+       </TreeView.ItemTemplate>
+       <TreeView.ItemContainerStyle>
+        <Style TargetType="TreeViewItem">
+         <Style.Triggers><DataTrigger Binding="{Binding Kind}" Value="{x:Static core:MenuBranchKind.All}">
+          <Setter Property="IsExpanded" Value="True"/><Setter Property="IsSelected" Value="True"/>
+         </DataTrigger></Style.Triggers>
+        </Style>
+       </TreeView.ItemContainerStyle>
+      </TreeView>
+     </DockPanel>
+    </Border>
+    <GridSplitter x:Name="MenuSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Center" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="#DCE2E8"/>
+     <Grid Grid.Column="2">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+     <Button x:Name="MenuToggleButton" Content="Скрыть ветки" Click="ToggleMenuClick" Padding="10,5"/>
      <Button x:Name="SelectButton" Content="Выбрать найденные" Click="SelectVisibleClick" Padding="10,5"/>
      <Button x:Name="ClearButton" Content="Снять весь выбор" Click="ClearSelectionClick" Padding="10,5"/>
-    </StackPanel>
-    <DataGrid x:Name="ProductsGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+    </WrapPanel>
+    <TextBlock x:Name="MenuFilterText" Grid.Row="1" Margin="0,0,0,10" Foreground="#526170" TextWrapping="Wrap"/>
+    <DataGrid x:Name="ProductsGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
       HeadersVisibility="Column" RowHeight="42" Background="White" BorderBrush="#DCE2E8" GridLinesVisibility="Horizontal"
       SelectionMode="Extended" EnableRowVirtualization="True">
      <DataGrid.Columns>
@@ -41,15 +66,15 @@
       </DataGridTemplateColumn>
       <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
       <DataGridTextColumn Header="Цена, ₽" Binding="{Binding Price}" Width="100" IsReadOnly="True"/>
-      <DataGridTemplateColumn Header="За" Width="90">
+      <DataGridTemplateColumn Header="За" Width="70">
        <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding UnitTitle}" ToolTip="{Binding UnitError}" VerticalAlignment="Center" TextWrapping="Wrap"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
-      <DataGridTextColumn Header="₽ / 100 г" Binding="{Binding PricePer100Grams}" Width="100" IsReadOnly="True"/>
       <DataGridTemplateColumn Header="Ценников" Width="90">
        <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox IsEnabled="{Binding CanPrint}" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" Margin="4" ToolTip="Количество экземпляров этого ценника"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
      </DataGrid.Columns>
     </DataGrid>
+   </Grid>
    </Grid>
    <Border Grid.Column="1" Background="White" BorderBrush="#DCE2E8" BorderThickness="1" CornerRadius="8" Padding="18">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -63,8 +88,7 @@
      <TextBlock x:Name="TemplateDescription" TextWrapping="Wrap" Foreground="#526170" Margin="0,8,0,8"/>
      <TextBlock Text="Ориентация ценника" Margin="0,0,0,8"/>
      <ComboBox x:Name="OrientationBox" MinHeight="34" SelectedValuePath="Tag" SelectionChanged="OrientationChanged" Margin="0,0,0,12"/>
-     <TextBlock Text="Цена весовых товаров" Margin="0,0,0,8"/>
-     <ComboBox x:Name="WeightPriceBox" MinHeight="34" SelectedValuePath="Tag" SelectionChanged="WeightPriceChanged" Margin="0,0,0,12"/>
+     <TextBlock Text="Весовые товары — цена за 100 г. Штучные — цена за штуку." TextWrapping="Wrap" Foreground="#526170" Margin="0,0,0,12"/>
      <Border Background="#F4F6F8" Padding="8" Margin="0,0,0,8">
       <Viewbox x:Name="TemplatePreview" Height="160" Stretch="Uniform"/>
      </Border>
@@ -72,7 +96,7 @@
      <TextBlock x:Name="PrintFormatText" Text="А4 · книжная ориентация&#10;Масштаб 100% · без подгонки&#10;Размер ценника: 100 × 140 мм" TextWrapping="Wrap" Foreground="#526170" LineHeight="23"/>
      <Separator Margin="0,20"/>
      <TextBlock x:Name="SummaryText" FontSize="16" TextWrapping="Wrap" LineHeight="26"/>
-     <TextBlock Text="В печать попадут все отмеченные товары, включая скрытые поиском." TextWrapping="Wrap" Foreground="#526170" Margin="0,12,0,20"/>
+     <TextBlock Text="В печать попадут все отмеченные товары, включая скрытые веткой меню или поиском." TextWrapping="Wrap" Foreground="#526170" Margin="0,12,0,20"/>
      <Button x:Name="PreviewButton" Content="Предварительный просмотр" Click="PreviewClick" Margin="0,0,0,10"/>
      <Button x:Name="PrintButton" Content="Напечатать…" Click="PrintClick" Margin="0" Background="#215C45" Foreground="White"/>
     </StackPanel>

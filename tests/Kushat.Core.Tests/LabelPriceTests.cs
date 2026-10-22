@@ -60,4 +60,14 @@ public class LabelPriceTests
         restored.Normalize();
         Assert.Equal(WeightPriceMode.HundredGrams, restored.WeightPriceMode);
     }
+    [Theory]
+    [InlineData(WeightPriceMode.Both)]
+    [InlineData(WeightPriceMode.Kilogram)]
+    [InlineData((WeightPriceMode)999)]
+    public void OldSettingsCannotRestoreKilogramOrDoublePriceTemplates(WeightPriceMode previous)
+    {
+        var settings = new AppSettings { WeightPriceMode = previous }; settings.Normalize();
+        Assert.Equal(WeightPriceMode.HundredGrams, settings.WeightPriceMode);
+    }
+
 }

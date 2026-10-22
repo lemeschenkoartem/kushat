@@ -13,7 +13,7 @@ public static class LabelDocument
 {
     public static double Mm(double mm) => mm * 96 / 25.4;
 
-    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, WeightPriceMode weightPriceMode = WeightPriceMode.Both, LabelOrientation orientation = LabelOrientation.Portrait)
+    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait)
     {
         var document = new FixedDocument();
         var geometry = LabelLayout.Geometry(orientation);
@@ -24,7 +24,7 @@ public static class LabelDocument
             var visual = new FixedPage { Width = size.Width, Height = size.Height, Background = Brushes.White };
             foreach (var slot in page.Slots)
             {
-                var label = CreateLabel(slot.Product, demo, template, weightPriceMode, orientation);
+                var label = CreateLabel(slot.Product, demo, template, orientation);
                 FixedPage.SetLeft(label, Mm(geometry.LeftMm + slot.Column * geometry.LabelWidthMm));
                 FixedPage.SetTop(label, Mm(geometry.TopMm + slot.Row * geometry.LabelHeightMm));
                 visual.Children.Add(label);
@@ -36,13 +36,12 @@ public static class LabelDocument
         return document;
     }
 
-    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, WeightPriceMode weightPriceMode = WeightPriceMode.Both, LabelOrientation orientation = LabelOrientation.Portrait)
+    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait)
     {
         if (!product.CanPrint) throw new ArgumentException("Не определена единица товара: " + product.Name);
         template ??= LabelTemplates.All[0];
         var geometry = LabelLayout.Geometry(orientation);
-        var horizontal = orientation == LabelOrientation.Landscape;
-        var prices = LabelPrices.For(product, weightPriceMode, template.Style == LabelStyle.LargeHundredGrams);
+        var prices = LabelPrices.For(product, WeightPriceMode.HundredGrams);
         var accent = new SolidColorBrush(Color.FromRgb(33, 92, 69));
         var chalk = template.Style == LabelStyle.Chalkboard;
         var grid = new Grid();
@@ -59,10 +58,14 @@ public static class LabelDocument
             FontFamily = chalk ? new FontFamily("Georgia") : new FontFamily("Segoe UI"),
             FontStyle = chalk ? FontStyles.Italic : FontStyles.Normal,
             TextAlignment = template.Style == LabelStyle.Accent ? TextAlignment.Left : TextAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, Mm(4), 0, 0)
         };
         // Fit the complete name into a reserved area; no ellipsis or silent clipping.
-        var nameSize = horizontal ? new Size(Mm(58), Mm(43)) : new Size(Mm(84) - 1, Mm(48));
+        var headerMm = template.Style == LabelStyle.Cafe ? 24 : template.Style == LabelStyle.Accent ? 14 : 0;
+        var priceFont = template.Style switch { LabelStyle.LargeHundredGrams => 64, LabelStyle.Chalkboard => 56, LabelStyle.Accent => 42, _ => 48 };
+        var priceMm = priceFont * 1.4 * 25.4 / 96 + 11 + (template.Style == LabelStyle.LargeHundredGrams ? 6 : 0);
+        var nameHeightMm = Math.Min(48, geometry.LabelHeightMm - 16 - headerMm - priceMm - (demo ? 8 : 0) - 7);
+        var nameSize = new Size(Mm(geometry.LabelWidthMm - 16) - 3, Mm(nameHeightMm));
         while (true)
         {
             name.Measure(new Size(nameSize.Width, double.PositiveInfinity));
@@ -75,15 +78,13 @@ public static class LabelDocument
         switch (template.Style)
         {
             case LabelStyle.Classic:
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, prices.Secondary is not null ? 28 : 48);
-                if (prices.Secondary is { } classicSecondary) AddPrice(grid, 3, classicSecondary.Title, classicSecondary.Amount, 34);
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 48);
                 break;
             case LabelStyle.LargeHundredGrams:
                 var price = PricePanel(prices.Primary.Title, prices.Primary.Amount, 64);
                 var highlight = new Border { Background = new SolidColorBrush(Color.FromRgb(238, 246, 240)),
                     CornerRadius = new CornerRadius(7), Padding = new Thickness(Mm(3)), Child = price };
                 Grid.SetRow(highlight, 2); grid.Children.Add(highlight);
-                if (prices.Secondary is { } largeSecondary) AddPrice(grid, 3, largeSecondary.Title, largeSecondary.Amount, 24);
                 break;
             case LabelStyle.Accent:
                 var stripe = new Border { Background = accent, Padding = new Thickness(10, 5, 10, 5),
@@ -91,11 +92,9 @@ public static class LabelDocument
                         FontWeight = FontWeights.SemiBold, Foreground = Brushes.White } };
                 grid.Children.Add(stripe);
                 AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 42);
-                if (prices.Secondary is { } accentSecondary) AddPrice(grid, 3, accentSecondary.Title, accentSecondary.Amount, 28);
                 break;
             case LabelStyle.Chalkboard:
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, prices.Secondary is not null ? 34 : 56, Brushes.White, new FontFamily("Georgia"));
-                if (prices.Secondary is { } chalkSecondary) AddPrice(grid, 3, chalkSecondary.Title, chalkSecondary.Amount, 40, Brushes.White, new FontFamily("Georgia"));
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 56, Brushes.White, new FontFamily("Georgia"));
                 break;
             case LabelStyle.Cafe:
                 var awning = new UniformGrid { Rows = 1, Columns = 14, Height = Mm(9) };
@@ -107,8 +106,7 @@ public static class LabelDocument
                 header.Children.Add(new TextBlock { Text = "ЦЕННИК", FontSize = 18, FontWeight = FontWeights.SemiBold,
                     TextAlignment = TextAlignment.Center, Margin = new Thickness(0, Mm(3), 0, 0) });
                 grid.Children.Add(header);
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, prices.Secondary is not null ? 36 : 48);
-                if (prices.Secondary is { } cafeSecondary) AddPrice(grid, 3, cafeSecondary.Title, cafeSecondary.Amount, 32);
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 48);
                 break;
             default: throw new ArgumentException("Неизвестный шаблон ценника.");
         }
@@ -117,18 +115,6 @@ public static class LabelDocument
             var note = new TextBlock { Text = "ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ", FontSize = 11,
                 Foreground = chalk ? Brushes.White : Brushes.Firebrick, TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
             Grid.SetRow(note, 4); grid.Children.Add(note);
-        }
-        if (horizontal)
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            Grid.SetRowSpan(name, 3); name.Margin = new Thickness(0, 0, Mm(4), 0);
-            foreach (var element in grid.Children.OfType<FrameworkElement>().Where(e => e != name))
-            {
-                var row = Grid.GetRow(element);
-                if (row is 0 or 4) Grid.SetColumnSpan(element, 2);
-                else { Grid.SetColumn(element, 1); Grid.SetRow(element, row - 1); element.VerticalAlignment = VerticalAlignment.Center; }
-            }
         }
         return new Border
         {

@@ -10,9 +10,9 @@ public sealed class ProductRow(Product product) : INotifyPropertyChanged, IDataE
     public Product Product { get; } = product;
     public string Name => Product.Name;
     public string Id => Product.Id;
-    public string Price => Product.DisplayPrice.ToString("N2", CultureInfo.GetCultureInfo("ru-RU"));
+    public string Price => (Product.Unit == SaleUnit.Kilogram ? Product.PricePer100Grams!.Value : Product.DisplayPrice).ToString("N2", CultureInfo.GetCultureInfo("ru-RU"));
     public string PricePer100Grams => Product.PricePer100Grams?.ToString("N2", CultureInfo.GetCultureInfo("ru-RU")) ?? "—";
-    public string UnitTitle => Product.UnitTitle;
+    public string UnitTitle => Product.Unit == SaleUnit.Kilogram ? "100 г" : Product.UnitTitle;
     public string? UnitError => Product.UnitError;
     public bool CanPrint => Product.CanPrint;
     private bool selected;

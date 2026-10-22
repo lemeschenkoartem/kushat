@@ -31,11 +31,13 @@ public sealed class ReferenceConnection
 
 public sealed record PriceType(string Id, string Name);
 public sealed record ReferenceItem(string Id, string Name, IReadOnlyDictionary<string, decimal> Prices,
-    SaleUnit Unit = SaleUnit.Unknown, string? UnitError = null);
+    SaleUnit Unit = SaleUnit.Unknown, string? UnitError = null, string? MenuGroupId = null);
 public sealed record PricedCatalog(IReadOnlyList<Product> Products, int WithoutPrice);
 
-public sealed record ReferenceCatalog(IReadOnlyList<PriceType> PriceTypes, IReadOnlyList<ReferenceItem> Items)
+public sealed record ReferenceCatalog(IReadOnlyList<PriceType> PriceTypes, IReadOnlyList<ReferenceItem> Items,
+    IReadOnlyList<MenuGroup>? Groups = null, string? GroupWarning = null)
 {
+    public IReadOnlyList<MenuGroup> MenuGroups => Groups ?? [];
     public string? DefaultPriceTypeId => PriceTypes.FirstOrDefault(p =>
         p.Name.Trim().Equals("Основной", StringComparison.OrdinalIgnoreCase))?.Id
         ?? PriceTypes.FirstOrDefault(p => p.Name.Trim().Equals("Основная", StringComparison.OrdinalIgnoreCase))?.Id
@@ -45,7 +47,7 @@ public sealed record ReferenceCatalog(IReadOnlyList<PriceType> PriceTypes, IRead
     {
         if (!PriceTypes.Any(p => p.Id == id)) throw new ArgumentException("Выберите тип цены из загруженного справочника.");
         var products = Items.Where(i => i.Prices.ContainsKey(id))
-            .Select(i => new Product(i.Id, i.Name, i.Prices[id], i.Unit, i.UnitError)).ToArray();
+            .Select(i => new Product(i.Id, i.Name, i.Prices[id], i.Unit, i.UnitError, i.MenuGroupId)).ToArray();
         if (products.Length == 0)
             throw new FormatException("Для выбранного типа цены нет значений. Проверьте цены и доступность макросвойств меню на сервере.");
         return new(products, Items.Count - products.Length);

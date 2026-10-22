@@ -80,7 +80,7 @@ public class WindowsBehaviorTests
     [InlineData("accent")]
     [InlineData("chalkboard")]
     [InlineData("cafe")]
-    public void EveryTemplateShowsBothCorrectPricesAndDemoMarkWithinFixedDimensions(string id)
+    public void EveryTemplateShowsSingleCorrectPriceAndDemoMarkWithinFixedDimensions(string id)
     {
         Sta(() =>
         {
@@ -93,7 +93,7 @@ public class WindowsBehaviorTests
             Assert.Equal(LabelDocument.Mm(140), label.ActualHeight, 4);
             var text = LogicalChildren(label).OfType<TextBlock>().ToArray();
             Assert.Contains(text, t => t.Text == product.Name);
-            Assert.Contains(text, t => t.Text == "315,55 ₽");
+            Assert.DoesNotContain(text, t => t.Text == "315,55 ₽");
             Assert.Contains(text, t => t.Text == "31,56 ₽");
             Assert.Contains(text, t => t.Text == "ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ");
             foreach (var block in text)
@@ -116,56 +116,96 @@ public class WindowsBehaviorTests
     [InlineData("accent")]
     [InlineData("chalkboard")]
     [InlineData("cafe")]
-    public void HorizontalTemplatesKeepCompleteTextAndBothPricesInsidePhysicalLabel(string id)
+    public void HorizontalTemplatesKeepCompleteTextAboveSinglePriceInsidePhysicalLabel(string id)
     {
         Sta(() =>
         {
             var product = new Product("1", "Салат из свежих овощей с зеленью и домашней заправкой", 315.55m);
-            var label = LabelDocument.CreateLabel(product, true, LabelTemplates.Find(id), WeightPriceMode.Both, LabelOrientation.Landscape);
+            var label = LabelDocument.CreateLabel(product, true, LabelTemplates.Find(id), LabelOrientation.Landscape);
             label.Measure(new Size(label.Width, label.Height)); label.Arrange(new Rect(0, 0, label.Width, label.Height)); label.UpdateLayout();
             Assert.Equal(LabelDocument.Mm(140), label.ActualWidth, 4); Assert.Equal(LabelDocument.Mm(100), label.ActualHeight, 4);
             var text = LogicalChildren(label).OfType<TextBlock>().ToArray();
-            Assert.Contains(text, t => t.Text == product.Name); Assert.Contains(text, t => t.Text == "315,55 ₽"); Assert.Contains(text, t => t.Text == "31,56 ₽");
+            Assert.Contains(text, t => t.Text == product.Name); Assert.DoesNotContain(text, t => t.Text == "315,55 ₽"); Assert.Contains(text, t => t.Text == "31,56 ₽");
             foreach (var block in text)
             {
                 var bounds = block.TransformToAncestor(label).TransformBounds(new Rect(new Point(), block.RenderSize));
                 Assert.True(bounds.Left >= -0.5 && bounds.Top >= -0.5 && bounds.Right <= label.ActualWidth + 0.5 && bounds.Bottom <= label.ActualHeight + 0.5,
                     $"Text outside horizontal {id}: {block.Text}; {bounds}");
             }
-            var document = LabelDocument.Create(LabelLayout.Create([new(product, 4)]), false, LabelTemplates.Find(id), WeightPriceMode.Both, LabelOrientation.Landscape);
+            var document = LabelDocument.Create(LabelLayout.Create([new(product, 4)]), false, LabelTemplates.Find(id), LabelOrientation.Landscape);
             Assert.Equal(LabelDocument.Mm(297), document.DocumentPaginator.PageSize.Width, 4);
             Assert.Equal(LabelDocument.Mm(210), document.DocumentPaginator.PageSize.Height, 4);
             Assert.Equal(4, document.Pages[0].Child.Children.OfType<Border>().Count());
         });
     }
 
-    public static IEnumerable<object[]> TemplatePriceModes() =>
+    public static IEnumerable<object[]> TemplateUnitsAndOrientations() =>
         from template in LabelTemplates.All
-        from mode in Enum.GetValues<WeightPriceMode>()
+        from orientation in Enum.GetValues<LabelOrientation>()
         from unit in new[] { SaleUnit.Kilogram, SaleUnit.Piece }
-        select new object[] { template.Id, mode, unit };
+        select new object[] { template.Id, orientation, unit };
 
     [Theory]
-    [MemberData(nameof(TemplatePriceModes))]
-    public void RenderedLabelsRespectWeightChoiceAndNeverInventWeightPricesForPieceGoods(string id, WeightPriceMode mode, SaleUnit unit)
+    [MemberData(nameof(TemplateUnitsAndOrientations))]
+    public void EveryTemplatePlacesNameAboveOneHundredGramOrPiecePrice(string id, LabelOrientation orientation, SaleUnit unit)
     {
         Sta(() =>
         {
-            var label = LabelDocument.CreateLabel(new Product("1", "Товар", 55m, unit), false, LabelTemplates.Find(id), mode);
-            label.Measure(new Size(label.Width, label.Height));
-            label.Arrange(new Rect(0, 0, label.Width, label.Height));
-            var text = LogicalChildren(label).OfType<TextBlock>().Select(t => t.Text).ToArray();
-            if (unit == SaleUnit.Piece)
+            var product = new Product("1", "Салат с зеленью и овощами", 55m, unit);
+            var label = LabelDocument.CreateLabel(product, false, LabelTemplates.Find(id), orientation);
+            label.Measure(new Size(label.Width, label.Height)); label.Arrange(new Rect(0, 0, label.Width, label.Height)); label.UpdateLayout();
+            var text = LogicalChildren(label).OfType<TextBlock>().ToArray();
+            Assert.DoesNotContain(text, t => t.Text == "Цена за 1 кг");
+            Assert.Contains(text, t => t.Text == (unit == SaleUnit.Piece ? "Цена за 1 шт." : "Цена за 100 г"));
+            Assert.DoesNotContain(text, t => t.Text == (unit == SaleUnit.Piece ? "Цена за 100 г" : "Цена за 1 шт."));
+            var amount = Assert.Single(text, t => t.Text.EndsWith(" ₽"));
+            Assert.Equal(unit == SaleUnit.Piece ? "55,00 ₽" : "5,50 ₽", amount.Text);
+            var name = text.Single(t => t.Text == product.Name);
+            var nameBounds = name.TransformToAncestor(label).TransformBounds(new Rect(new Point(), name.RenderSize));
+            var priceBounds = amount.TransformToAncestor(label).TransformBounds(new Rect(new Point(), amount.RenderSize));
+            Assert.True(nameBounds.Bottom < priceBounds.Top, $"Name is not above price: {id}, {orientation}");
+            Assert.True(priceBounds.Top > label.ActualHeight / 2, $"Price is not in lower half: {id}, {orientation}");
+        });
+    }
+
+    [Fact]
+    public void MenuBranchAndSearchFilteringKeepSelectedRowsAndQuantitiesAcrossBranches()
+    {
+        Sta(() =>
+        {
+            var window = new MainWindow();
+            try
             {
-                Assert.Contains("Цена за 1 шт.", text);
-                Assert.DoesNotContain("Цена за 100 г", text);
-                Assert.DoesNotContain("Цена за 1 кг", text);
+                ((Button)window.FindName("DemoButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var grid = (DataGrid)window.FindName("ProductsGrid");
+                var view = Assert.IsAssignableFrom<System.ComponentModel.ICollectionView>(grid.ItemsSource);
+                var all = view.Cast<ProductRow>().ToArray(); Assert.Equal(5, all.Length);
+                var selected = all.Single(r => r.Id == "demo-1"); Assert.Equal("85,00", selected.Price); Assert.Equal("100 г", selected.UnitTitle); selected.IsSelected = true; selected.Quantity = "3";
+                var tree = (TreeView)window.FindName("MenuTree");
+                var root = Assert.Single(tree.ItemsSource.Cast<MenuBranch>());
+                var kitchen = root.Children.Single(b => b.GroupId == "kitchen");
+                var salads = kitchen.Children.Single(b => b.GroupId == "salads");
+                var hot = kitchen.Children.Single(b => b.GroupId == "hot");
+                tree.RaiseEvent(new RoutedPropertyChangedEventArgs<object>(root, salads, TreeView.SelectedItemChangedEvent));
+                Assert.Equal(2, view.Cast<ProductRow>().Count());
+                var search = (TextBox)window.FindName("SearchBox"); search.Text = "Оливье";
+                Assert.Same(selected, Assert.Single(view.Cast<ProductRow>()));
+                ((Button)window.FindName("SelectButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                search.Text = "";
+                tree.RaiseEvent(new RoutedPropertyChangedEventArgs<object>(salads, hot, TreeView.SelectedItemChangedEvent));
+                Assert.Equal(2, view.Cast<ProductRow>().Count()); Assert.True(selected.IsSelected); Assert.Equal("3", selected.Quantity);
+                Assert.DoesNotContain(view.Cast<ProductRow>(), r => r.IsSelected);
+                ((Button)window.FindName("SelectButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(3, all.Count(r => r.IsSelected));
+                Assert.Equal("3", selected.Quantity);
+                tree.RaiseEvent(new RoutedPropertyChangedEventArgs<object>(hot, root, TreeView.SelectedItemChangedEvent));
+                Assert.Equal(5, view.Cast<ProductRow>().Count());
+                var summary = (TextBlock)window.FindName("SummaryText"); Assert.Contains("Ценников: 5", summary.Text);
+                ((Button)window.FindName("ClearButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.DoesNotContain(all, r => r.IsSelected);
+                Assert.Null(window.FindName("WeightPriceBox"));
             }
-            else
-            {
-                Assert.Equal(mode != WeightPriceMode.HundredGrams, text.Contains("Цена за 1 кг"));
-                Assert.Equal(mode != WeightPriceMode.Kilogram, text.Contains("Цена за 100 г"));
-            }
+            finally { window.Close(); }
         });
     }
 

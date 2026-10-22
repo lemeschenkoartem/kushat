@@ -8,9 +8,9 @@ public static class LabelTemplates
 {
     public static IReadOnlyList<LabelTemplate> All { get; } = Array.AsReadOnly(new[]
     {
-        new LabelTemplate("classic", "Классический", "Название по центру. Цена за кг или штуку; за 100 г — только для весовых.", LabelStyle.Classic),
+        new LabelTemplate("classic", "Классический", "Название сверху, цена снизу: за 100 г для весовых, за штуку для штучных.", LabelStyle.Classic),
         new LabelTemplate("large-100g", "Крупная цена", "Крупная цена за 100 г для весовых или за штуку для штучных товаров.", LabelStyle.LargeHundredGrams),
-        new LabelTemplate("accent", "С акцентной полосой", "Зелёная полоса, название слева и крупная цена за кг или штуку.", LabelStyle.Accent),
+        new LabelTemplate("accent", "С акцентной полосой", "Зелёная полоса, название сверху и цена за 100 г или штуку снизу.", LabelStyle.Accent),
         new LabelTemplate("chalkboard", "Меловой · чёрный фон", "Белые надписи на чёрном фоне, название курсивом.", LabelStyle.Chalkboard),
         new LabelTemplate("cafe", "Кафе · полосатая рамка", "Чёрно-белое оформление с полосатым навесом и рамкой.", LabelStyle.Cafe)
     });

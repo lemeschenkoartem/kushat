@@ -23,7 +23,7 @@ public sealed class AppSettings
     public string? PrinterName { get; set; }
     public string TemplateId { get; set; } = "classic";
     public LabelOrientation LabelOrientation { get; set; } = LabelOrientation.Portrait;
-    public WeightPriceMode WeightPriceMode { get; set; } = WeightPriceMode.Both;
+    public WeightPriceMode WeightPriceMode { get; set; } = WeightPriceMode.HundredGrams;
     [JsonIgnore] public ConnectionProfile? ActiveProfile => Profiles.FirstOrDefault(p => p.Id == ActiveProfileId);
 
     public void Normalize()
@@ -37,7 +37,7 @@ public sealed class AppSettings
         if (active is not null) Connection = active.Connection;
         TemplateId = LabelTemplates.Find(TemplateId).Id;
         if (!Enum.IsDefined(LabelOrientation)) LabelOrientation = LabelOrientation.Portrait;
-        if (!Enum.IsDefined(WeightPriceMode)) WeightPriceMode = WeightPriceMode.Both;
+        WeightPriceMode = WeightPriceMode.HundredGrams; // Migrate old kg/both preferences to the current single-price templates.
     }
 
     public ConnectionProfile RememberConnection(ReferenceConnection connection, string name, LoginEnvelope? savedLogin)

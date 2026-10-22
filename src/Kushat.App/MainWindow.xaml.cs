@@ -17,6 +17,8 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<ProductRow> rows = [];
     private readonly ICollectionView view;
+    private MenuBrowser menuBrowser = new([], []);
+    private double menuWidth = 190;
     private readonly HttpClient http = ReferenceHttpClient.Create();
     private readonly WindowsLoginProtector loginProtector = new();
     private AppSettings settings = new();
@@ -35,38 +37,67 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Title = $"Кушать · Печать ценников · {App.DisplayVersion}";
+        Width = Math.Min(1320, SystemParameters.WorkArea.Width - 24);
         view = CollectionViewSource.GetDefaultView(rows);
-        view.Filter = item => item is ProductRow row &&
-            (row.Name.Contains(SearchBox.Text.Trim(), StringComparison.CurrentCultureIgnoreCase) ||
-             row.Id.Contains(SearchBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
+        view.Filter = item => item is ProductRow row && menuBrowser.Matches(row.Product, SearchBox.Text);
         ProductsGrid.ItemsSource = view;
         try { settings = SettingsStore.Load(); settingsWritable = true; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException)
         { ShowError("Не удалось прочитать настройки. Их можно задать заново. Файл: " + SettingsStore.FilePath); }
         TemplateBox.ItemsSource = LabelTemplates.All;
         TemplateBox.SelectedValue = settings.TemplateId;
-        WeightPriceBox.Items.Add(new ComboBoxItem { Content = "За 1 кг и за 100 г", Tag = WeightPriceMode.Both });
-        WeightPriceBox.Items.Add(new ComboBoxItem { Content = "Только за 1 кг", Tag = WeightPriceMode.Kilogram });
-        WeightPriceBox.Items.Add(new ComboBoxItem { Content = "Только за 100 г", Tag = WeightPriceMode.HundredGrams });
-        WeightPriceBox.SelectedValue = settings.WeightPriceMode;
         OrientationBox.Items.Add(new ComboBoxItem { Content = "Вертикальный · 100 × 140 мм", Tag = LabelOrientation.Portrait });
         OrientationBox.Items.Add(new ComboBoxItem { Content = "Горизонтальный · 140 × 100 мм", Tag = LabelOrientation.Landscape });
         OrientationBox.SelectedValue = settings.LabelOrientation;
         LoadPrinters(); UpdateSummary();
+        MenuTree.ItemsSource = new[] { menuBrowser.Root }; UpdateMenuFilter();
         Loaded += AutoConnectLoaded;
     }
 
-    private void SearchChanged(object sender, TextChangedEventArgs e) => view?.Refresh();
+    private void SearchChanged(object sender, TextChangedEventArgs e) => UpdateMenuFilter();
 
-    private void ReplaceProducts(IEnumerable<Product> products, bool isDemo, DateTime? sourceTime = null)
+    private void MenuBranchChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        foreach (var row in rows) row.PropertyChanged -= RowChanged;
-        rows.Clear();
-        foreach (var product in products.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
+        if (e.NewValue is not MenuBranch branch) return;
+        menuBrowser.Select(branch); UpdateMenuFilter();
+    }
+
+    private void UpdateMenuFilter()
+    {
+        if (view is null) return;
+        view.Refresh();
+        MenuFilterText.Text = $"{menuBrowser.SelectedBranch.Path} · Показано: {view.Cast<ProductRow>().Count()} из {rows.Count}";
+    }
+
+    private void ToggleMenuClick(object sender, RoutedEventArgs e)
+    {
+        var hide = MenuPanel.Visibility == Visibility.Visible;
+        if (hide && MenuColumn.ActualWidth > 0) menuWidth = MenuColumn.ActualWidth;
+        MenuColumn.Width = new GridLength(hide ? 0 : menuWidth);
+        MenuPanel.Visibility = MenuSplitter.Visibility = hide ? Visibility.Collapsed : Visibility.Visible;
+        MenuToggleButton.Content = hide ? "Показать ветки" : "Скрыть ветки";
+    }
+
+    private void ReplaceProducts(IEnumerable<Product> products, bool isDemo, DateTime? sourceTime = null, IReadOnlyList<MenuGroup>? groups = null)
+    {
+        var materialized = products.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        menuBrowser = new MenuBrowser(groups ?? catalog?.MenuGroups ?? [], materialized);
+        using (view.DeferRefresh())
         {
-            var row = new ProductRow(product);
-            row.PropertyChanged += RowChanged; rows.Add(row);
+            foreach (var row in rows) row.PropertyChanged -= RowChanged;
+            rows.Clear();
+            foreach (var product in materialized)
+            {
+                var row = new ProductRow(product);
+                row.PropertyChanged += RowChanged; rows.Add(row);
+            }
         }
+        MenuTree.ItemsSource = new[] { menuBrowser.Root };
+        MenuNoticeText.Text = catalog?.GroupWarning ?? (menuBrowser.HasIncompleteHierarchy
+            ? "Часть групп показана на верхнем уровне: структура меню неполная."
+            : materialized.Length == 0 ? "Загрузите меню или откройте демо-товары."
+            : "Выберите ветку. Поиск работает внутри неё и её подветок.");
+        UpdateMenuFilter();
         demo = isDemo; loadedAt = sourceTime ?? DateTime.Now; UpdateSummary();
     }
 
@@ -124,7 +155,7 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         RefreshButton.IsEnabled = DemoButton.IsEnabled = ProductsGrid.IsEnabled =
-            ConnectButton.IsEnabled = PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled =
+            ConnectButton.IsEnabled = MenuTree.IsEnabled = PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled =
             PreviewButton.IsEnabled = PrintButton.IsEnabled = CertificatesButton.IsEnabled = OrientationBox.IsEnabled = !busy;
         LogoutButton.IsEnabled = !busy && !string.IsNullOrEmpty(credential);
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
@@ -137,10 +168,10 @@ public partial class MainWindow : Window
         if (!ConfirmReplace()) return;
         ClearSession();
         ReplaceProducts([
-            new("demo-1", "Салат Оливье", 850m), new("demo-2", "Плов с говядиной", 650m),
-            new("demo-3", "Пирожок с капустой", 55m, SaleUnit.Piece), new("demo-4", "Картофельное пюре", 315.55m),
-            new("demo-5", "Салат из свежих овощей с зеленью", 420m)
-        ], true);
+            new("demo-1", "Салат Оливье", 850m, MenuGroupId: "salads"), new("demo-2", "Плов с говядиной", 650m, MenuGroupId: "hot"),
+            new("demo-3", "Пирожок с капустой", 55m, SaleUnit.Piece, MenuGroupId: "bakery"), new("demo-4", "Картофельное пюре", 315.55m, MenuGroupId: "hot"),
+            new("demo-5", "Салат из свежих овощей с зеленью", 420m, MenuGroupId: "salads")
+        ], true, groups: [new("kitchen", "Кухня"), new("salads", "Салаты", "kitchen"), new("hot", "Горячие блюда", "kitchen"), new("bakery", "Выпечка")]);
         StatusText.Text = "ДЕМО: товары и цены вымышлены. На каждом ценнике будет отметка «Демонстрационные данные».";
     }
 
@@ -216,7 +247,7 @@ public partial class MainWindow : Window
             var priced = catalog!.SelectPriceType(id);
             priceTypeId = id;
             ReplaceProducts(priced.Products, false, catalogLoadedAt);
-            StatusText.Text = $"Загружено товаров: {rows.Count}. Без цены и недоступно для печати: {priced.WithoutPrice}. Обновлено: {loadedAt:dd.MM.yyyy HH:mm}. Цена — за кг или штуку по данным R-Keeper. Не определена единица: {rows.Count(r => !r.CanPrint)}; эти товары недоступны для печати.";
+            StatusText.Text = $"Загружено товаров: {rows.Count}. Без цены и недоступно для печати: {priced.WithoutPrice}. Обновлено: {loadedAt:dd.MM.yyyy HH:mm}. На ценнике — одна цена: за 100 г или за штуку. Не определена единица: {rows.Count(r => !r.CanPrint)}; эти товары недоступны для печати.";
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
@@ -278,12 +309,6 @@ public partial class MainWindow : Window
         SaveSettings();
     }
 
-    private void WeightPriceChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (WeightPriceBox.SelectedValue is not WeightPriceMode mode) return;
-        settings.WeightPriceMode = mode; UpdateTemplatePreview(); SaveSettings();
-    }
-
     private void OrientationChanged(object sender, SelectionChangedEventArgs e)
     {
         if (OrientationBox.SelectedValue is not LabelOrientation orientation) return;
@@ -293,7 +318,7 @@ public partial class MainWindow : Window
     private void UpdateTemplatePreview()
     {
         TemplatePreview.Child = LabelDocument.CreateLabel(new Product("sample", "Салат Оливье", 850m), false,
-            LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode, settings.LabelOrientation);
+            LabelTemplates.Find(settings.TemplateId), settings.LabelOrientation);
         var size = LabelLayout.Geometry(settings.LabelOrientation);
         PreviewSizeText.Text = $"Образец оформления · {size.LabelWidthMm} × {size.LabelHeightMm} мм";
         PrintFormatText.Text = $"А4 · {(settings.LabelOrientation == LabelOrientation.Landscape ? "альбомная" : "книжная")} ориентация\nМасштаб 100% · без подгонки\nРазмер ценника: {size.LabelWidthMm} × {size.LabelHeightMm} мм";
@@ -306,7 +331,7 @@ public partial class MainWindow : Window
             if (!r.TryQuantity(out var quantity)) throw new ArgumentException("Исправьте количество у товара «" + r.Name + "».");
             return new LabelOrder(r.Product, quantity);
         });
-        return LabelDocument.Create(LabelLayout.Create(orders), demo, LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode, settings.LabelOrientation);
+        return LabelDocument.Create(LabelLayout.Create(orders), demo, LabelTemplates.Find(settings.TemplateId), settings.LabelOrientation);
     }
 
     private void PreviewClick(object sender, RoutedEventArgs e)

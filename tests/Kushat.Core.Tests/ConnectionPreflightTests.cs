@@ -73,7 +73,7 @@ public class ConnectionPreflightTests
     }
 
     [Fact]
-    public async Task SuccessfulPreflightPrecedesBothAuthenticatedApiReads()
+    public async Task SuccessfulPreflightPrecedesAllAuthenticatedApiReads()
     {
         var probe = new Probe(true); var calls = 0;
         using var http = new HttpClient(new Handler(request =>
@@ -83,7 +83,7 @@ public class ConnectionPreflightTests
             return new(HttpStatusCode.OK) { Content = new StringContent("<RK7QueryResult Status=\"Ok\"><RK7Reference><Items>" + item + "</Items></RK7Reference></RK7QueryResult>") };
         }));
         await new ReferenceConnectionWorkflow(http, probe).ConnectAsync(new() { ServerAddress = "https://example.test:8010", UserName = "labels" }, "password");
-        Assert.Equal(2, calls);
+        Assert.Equal(3, calls);
     }
 
     [Fact]
