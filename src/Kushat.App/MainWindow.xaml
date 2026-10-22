@@ -47,22 +47,22 @@
       <DataGridTemplateColumn Header="✓" Width="44">
        <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanPrint}" HorizontalAlignment="Center" VerticalAlignment="Center"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
-      <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" Width="*" MinWidth="170" IsReadOnly="True"/>
+      <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" Width="*" MinWidth="170" IsReadOnly="True"><DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding Name}"/></Style></DataGridTextColumn.ElementStyle></DataGridTextColumn>
       <DataGridTextColumn Header="Цена, ₽" Binding="{Binding Price}" Width="100" IsReadOnly="True"/>
       <DataGridTemplateColumn Header="За" Width="70">
        <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding UnitTitle}" ToolTip="{Binding UnitError}" VerticalAlignment="Center" TextWrapping="Wrap"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
       <DataGridTemplateColumn Header="Ценников" Width="90">
-       <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox IsEnabled="{Binding CanPrint}" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" Margin="4" ToolTip="Количество экземпляров этого ценника"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
+       <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox IsEnabled="{Binding CanPrint}" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" Padding="5,3" Margin="4" ToolTip="Количество экземпляров этого ценника"/></DataTemplate></DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
      </DataGrid.Columns>
     </DataGrid>
    </Grid>
 
  </Grid>
- <Border x:Name="PrintCard" Grid.Column="1" Style="{StaticResource Card}">
+ <Border x:Name="PrintCard" Grid.Column="1" VerticalAlignment="Top" Style="{StaticResource Card}">
  <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
- <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MinHeight="100">
+
  <StackPanel>
  <TextBlock Text="Параметры печати" FontSize="21" FontWeight="SemiBold" Margin="0,0,0,16"/>
  <local:SmoothExpander x:Name="PrinterSettings" Header="Принтер и тип цены"><StackPanel><TextBlock Text="Принтер Windows" Margin="0,0,0,7"/><ComboBox x:Name="PrinterBox" SelectionChanged="PrinterChanged"/><Button Content="Обновить принтеры" Click="ReloadPrintersClick" Margin="0,8,0,12"/><StackPanel x:Name="PriceTypePanel" Visibility="Collapsed"><TextBlock Text="Тип цены" Margin="0,0,0,7"/><ComboBox x:Name="PriceTypeBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="PriceTypeChanged"/><TextBlock Text="Основной тип выбирается автоматически." Style="{StaticResource MutedText}" Margin="0,8,0,0"/></StackPanel></StackPanel></local:SmoothExpander>
@@ -76,7 +76,7 @@
  <TextBlock x:Name="PresetStatusText" Style="{StaticResource MutedText}"/><TextBlock Text="Весовые — за 100 г. Штучные — за штуку." Style="{StaticResource MutedText}" Margin="0,8,0,0"/>
  </StackPanel></local:SmoothExpander>
  <local:SmoothExpander x:Name="AppearanceSettings" Header="Оформление программы"><ComboBox x:Name="ThemeBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ThemeChanged"/></local:SmoothExpander>
- </StackPanel></ScrollViewer>
+ </StackPanel>
  <StackPanel Grid.Row="1" Margin="0,12,0,0">
  <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="10"><Viewbox x:Name="TemplatePreview" Height="155" Stretch="Uniform"/></Border>
  <TextBlock x:Name="PreviewSizeText" MaxHeight="42" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,10"/>

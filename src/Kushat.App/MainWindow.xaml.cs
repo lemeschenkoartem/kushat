@@ -383,7 +383,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(PrintCard, stacked ? 0 : 1); Grid.SetRow(PrintCard, stacked ? 1 : 0);
         CatalogPanel.Margin = new Thickness(0, 0, stacked ? 0 : 16, stacked ? 16 : 0);
         CatalogPanel.Height = Math.Max(stacked ? 330 : 540, ActualHeight - 300);
-        PrintCard.Height = stacked ? double.NaN : CatalogPanel.Height;
+        PrintCard.Height = double.NaN;
         MenuColumn.MaxWidth = stacked ? 180 : 300;
     }
 
