@@ -237,7 +237,7 @@ public class WindowsBehaviorTests
         });
     }
     [Theory]
-    [InlineData("mint",1380,900)] [InlineData("indigo",1024,768)] [InlineData("graphite",640,480)]
+    [InlineData("mint",1380,900)] [InlineData("mint",1380,600)] [InlineData("indigo",1024,768)] [InlineData("graphite",640,480)]
     public void ResizingAndThemesKeepControlsReachableAndPresetsApply(string theme,double width,double height)
     {
         Sta(() =>
@@ -262,6 +262,8 @@ public class WindowsBehaviorTests
                 var preview=(Button)window.FindName("PreviewButton"); var print=(Button)window.FindName("PrintButton");
                 Assert.True(preview.IsVisible); Assert.True(print.IsVisible);
                 Assert.True(preview.ActualWidth>150); Assert.True(print.ActualHeight>20);
+                var printInCard=print.TransformToAncestor(card).TransformBounds(new Rect(new Point(),print.RenderSize));
+                Assert.True(printInCard.Bottom<=card.ActualHeight,$"Print action overflows settings card: {printInCard}; height {card.ActualHeight}");
                 var expander=(SmoothExpander)window.FindName("LabelSettings"); Assert.False(expander.IsExpanded);
                 expander.IsExpanded=true; PumpFor(TimeSpan.FromMilliseconds(260)); window.UpdateLayout();
                 var body=LogicalChildren(expander).OfType<TextBox>().FirstOrDefault(); Assert.NotNull(body);
@@ -284,13 +286,13 @@ public class WindowsBehaviorTests
                     image.Render(window);
                     var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder(); encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
                     var directory=System.IO.Path.Combine(workspace,"artifacts","ui"); System.IO.Directory.CreateDirectory(directory);
-                    using var output=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}.png")); encoder.Save(output);
+                    using var output=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}-{width}-{height}.png")); encoder.Save(output);
                     print.BringIntoView(); PumpFor(TimeSpan.FromMilliseconds(100)); window.UpdateLayout();
                     var bounds=print.TransformToAncestor(window).TransformBounds(new Rect(new Point(),print.RenderSize));
                     Assert.True(bounds.Top>=0 && bounds.Bottom<=window.ActualHeight,$"Print action outside viewport: {bounds}");
                     var printImage=new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); printImage.Render(window);
                     var printEncoder=new System.Windows.Media.Imaging.PngBitmapEncoder(); printEncoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(printImage));
-                    using var printOutput=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}-print.png")); printEncoder.Save(printOutput);
+                    using var printOutput=System.IO.File.Create(System.IO.Path.Combine(directory,$"{theme}-{width}-{height}-print.png")); printEncoder.Save(printOutput);
                 }
 
             }
