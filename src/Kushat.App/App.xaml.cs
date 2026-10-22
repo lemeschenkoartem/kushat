@@ -6,7 +6,7 @@ namespace Kushat.App;
 
 public partial class App : Application
 {
-    public static string DisplayVersion => typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.3.0";
+    public static string DisplayVersion => typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.4.0";
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -16,9 +16,7 @@ public partial class App : Application
         FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
             new FrameworkPropertyMetadata(XmlLanguage.GetLanguage("ru-RU")));
         base.OnStartup(e);
-        var addressIndex = Array.IndexOf(e.Args, "--address");
-        var address = addressIndex >= 0 && addressIndex + 1 < e.Args.Length ? e.Args[addressIndex + 1] : "";
-        MainWindow = e.Args.Contains("--certificates") ? new CertificateWizardWindow(address) : new MainWindow();
+        MainWindow = e.Args.Contains("--certificates") ? new CertificateWizardWindow() : new MainWindow();
         MainWindow.Show();
     }
 }

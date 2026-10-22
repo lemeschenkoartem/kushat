@@ -31,12 +31,15 @@ public class WindowsBehaviorTests
     {
         Sta(() =>
         {
-            var wizard = new CertificateWizardWindow("https://127.0.0.1:8010");
+            var wizard = new CertificateWizardWindow();
             var buttons = LogicalChildren(wizard).OfType<Button>().ToArray();
             Assert.False(buttons.Single(b => Equals(b.Content, "Далее →")).IsEnabled);
             Assert.Equal(Visibility.Collapsed, buttons.Single(b => Equals(b.Content, "Завершить")).Visibility);
             Assert.Equal(Visibility.Collapsed, buttons.Single(b => Equals(b.Content, "Остановить службу")).Visibility);
-            wizard.Close();
+            Assert.False(buttons.Single(b => Equals(b.Content, "← Назад")).IsEnabled);
+            Assert.True(buttons.Single(b => Equals(b.Content, "Отмена")).IsEnabled);
+            Assert.All(LogicalChildren(wizard).OfType<TextBox>(), box => Assert.True(box.IsReadOnly));
+            buttons.Single(b => Equals(b.Content, "Отмена")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         });
     }
 
@@ -104,6 +107,35 @@ public class WindowsBehaviorTests
                 Assert.True(background.Color.R < 32);
                 Assert.All(text, t => Assert.Equal(Colors.White, ((SolidColorBrush)t.Foreground).Color));
             }
+        });
+    }
+
+    [Theory]
+    [InlineData("classic")]
+    [InlineData("large-100g")]
+    [InlineData("accent")]
+    [InlineData("chalkboard")]
+    [InlineData("cafe")]
+    public void HorizontalTemplatesKeepCompleteTextAndBothPricesInsidePhysicalLabel(string id)
+    {
+        Sta(() =>
+        {
+            var product = new Product("1", "Салат из свежих овощей с зеленью и домашней заправкой", 315.55m);
+            var label = LabelDocument.CreateLabel(product, true, LabelTemplates.Find(id), WeightPriceMode.Both, LabelOrientation.Landscape);
+            label.Measure(new Size(label.Width, label.Height)); label.Arrange(new Rect(0, 0, label.Width, label.Height)); label.UpdateLayout();
+            Assert.Equal(LabelDocument.Mm(140), label.ActualWidth, 4); Assert.Equal(LabelDocument.Mm(100), label.ActualHeight, 4);
+            var text = LogicalChildren(label).OfType<TextBlock>().ToArray();
+            Assert.Contains(text, t => t.Text == product.Name); Assert.Contains(text, t => t.Text == "315,55 ₽"); Assert.Contains(text, t => t.Text == "31,56 ₽");
+            foreach (var block in text)
+            {
+                var bounds = block.TransformToAncestor(label).TransformBounds(new Rect(new Point(), block.RenderSize));
+                Assert.True(bounds.Left >= -0.5 && bounds.Top >= -0.5 && bounds.Right <= label.ActualWidth + 0.5 && bounds.Bottom <= label.ActualHeight + 0.5,
+                    $"Text outside horizontal {id}: {block.Text}; {bounds}");
+            }
+            var document = LabelDocument.Create(LabelLayout.Create([new(product, 4)]), false, LabelTemplates.Find(id), WeightPriceMode.Both, LabelOrientation.Landscape);
+            Assert.Equal(LabelDocument.Mm(297), document.DocumentPaginator.PageSize.Width, 4);
+            Assert.Equal(LabelDocument.Mm(210), document.DocumentPaginator.PageSize.Height, 4);
+            Assert.Equal(4, document.Pages[0].Child.Children.OfType<Border>().Count());
         });
     }
 

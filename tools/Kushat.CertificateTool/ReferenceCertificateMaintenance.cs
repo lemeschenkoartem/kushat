@@ -14,7 +14,7 @@ namespace Kushat.CertificateTool;
 [SupportedOSPlatform("windows")]
 public static class ReferenceCertificateMaintenance
 {
-    public static string Prepare(string serverDirectory, string keysDirectory, string host)
+    public static string Prepare(string serverDirectory, string keysDirectory, string host, IEnumerable<string>? additionalHosts = null)
     {
         serverDirectory = Path.GetFullPath(serverDirectory);
         keysDirectory = Path.GetFullPath(keysDirectory);
@@ -23,7 +23,7 @@ public static class ReferenceCertificateMaintenance
         using var defaultCert = X509Certificate2.CreateFromPem(Encoding.UTF8.GetString(defaultBytes));
         var custom = Path.Combine(keysDirectory, "mylocal.pem");
         var original = File.Exists(custom) ? File.ReadAllBytes(custom) : null;
-        var generated = LocalCertificate.Create(DateTimeOffset.UtcNow, host);
+        var generated = LocalCertificate.Create(DateTimeOffset.UtcNow, host, additionalHosts);
         var replacement = Encoding.ASCII.GetBytes(generated.Pem);
         CertificateFiles.ValidateReplacement(replacement, host);
         var output = Path.Combine(keysDirectory,
@@ -48,7 +48,7 @@ public static class ReferenceCertificateMaintenance
         using var cert = X509CertificateLoader.LoadCertificate(generated.PublicCertificate);
         var info = $"Subject: {cert.Subject}\nSHA256: {cert.GetCertHashString(HashAlgorithmName.SHA256)}\n" +
             $"NotBefore UTC: {cert.NotBefore.ToUniversalTime():u}\nNotAfter UTC: {cert.NotAfter.ToUniversalTime():u}\n" +
-            $"SAN: {host}, rk7.local, localhost, 127.0.0.1, ::1\nTarget: {custom}\n";
+            $"SAN: {cert.Extensions["2.5.29.17"]?.Format(false)}\nTarget: {custom}\n";
         File.WriteAllText(Path.Combine(output, "certificate-info.txt"), info, Encoding.UTF8);
         Console.WriteLine("ПОДГОТОВЛЕНО. Рабочие PEM не изменены; сервер не остановлен.");
         Console.WriteLine("Папка подготовки:\n" + output);

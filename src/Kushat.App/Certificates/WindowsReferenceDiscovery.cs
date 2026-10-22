@@ -9,14 +9,14 @@ namespace Kushat.App;
 
 public sealed record ReferenceServiceDefinition(string Name, string ExePath, int ProcessId);
 public sealed record ReferenceProcessDefinition(int Id, string ExePath);
-public sealed record ReferencePort(int ProcessId, int Port);
+public sealed record ReferencePort(int ProcessId, int Port, string Address = "0.0.0.0");
 public sealed class DiscoverySnapshot
 {
     public List<ReferenceServiceDefinition> Services { get; set; } = [];
     public List<ReferenceProcessDefinition> Processes { get; set; } = [];
     public List<ReferencePort> Ports { get; set; } = [];
 }
-public sealed record LocalReferenceServer(string ExePath, string? ServiceName, int ProcessId, IReadOnlyList<int> Ports)
+public sealed record LocalReferenceServer(string ExePath, string? ServiceName, int ProcessId, IReadOnlyList<int> Ports, IReadOnlyList<ReferencePort>? Listeners = null)
 {
     public string Directory => Path.GetDirectoryName(ExePath)!;
     public string DisplayName => (ServiceName ?? "Приложение RefSrv") + " · " + ExePath;
@@ -38,7 +38,7 @@ public static class WindowsReferenceDiscovery
         })
         $rkIds = @($rkProcesses | ForEach-Object { $_.Id })
         $rkPorts = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -in $rkIds } | ForEach-Object {
-            [pscustomobject]@{ProcessId=[int]$_.OwningProcess; Port=[int]$_.LocalPort}
+            [pscustomobject]@{ProcessId=[int]$_.OwningProcess; Port=[int]$_.LocalPort; Address=[string]$_.LocalAddress}
         })
         [pscustomobject]@{Services=$rkServices; Processes=$rkProcesses; Ports=$rkPorts} | ConvertTo-Json -Depth 5 -Compress
         """;
@@ -61,11 +61,34 @@ public static class WindowsReferenceDiscovery
         var snapshot = JsonSerializer.Deserialize<DiscoverySnapshot>(text.TrimStart('\ufeff'), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new IOException("Поиск не вернул данные.");
         var servers = snapshot.Services.Where(s => IsReferenceExecutable(s.ExePath)).Select(s => new LocalReferenceServer(
-            Path.GetFullPath(s.ExePath), s.Name, s.ProcessId, snapshot.Ports.Where(p => p.ProcessId == s.ProcessId).Select(p => p.Port).Distinct().Order().ToArray())).ToList();
+            Path.GetFullPath(s.ExePath), s.Name, s.ProcessId, snapshot.Ports.Where(p => p.ProcessId == s.ProcessId).Select(p => p.Port).Distinct().Order().ToArray(), snapshot.Ports.Where(p => p.ProcessId == s.ProcessId).ToArray())).ToList();
         foreach (var p in snapshot.Processes.Where(p => IsReferenceExecutable(p.ExePath)))
             if (!servers.Any(s => s.ProcessId == p.Id)) servers.Add(new(Path.GetFullPath(p.ExePath), null, p.Id,
-                snapshot.Ports.Where(x => x.ProcessId == p.Id).Select(x => x.Port).Distinct().Order().ToArray()));
+                snapshot.Ports.Where(x => x.ProcessId == p.Id).Select(x => x.Port).Distinct().Order().ToArray(), snapshot.Ports.Where(x => x.ProcessId == p.Id).ToArray()));
         return servers;
+    }
+
+    public static IReadOnlyList<Uri> HttpsCandidates(LocalReferenceServer server)
+    {
+        var listeners = server.Listeners ?? server.Ports.Select(p => new ReferencePort(server.ProcessId, p)).ToArray();
+        return listeners.Where(p => p.ProcessId == server.ProcessId && server.Ports.Contains(p.Port)).Select(p =>
+        {
+            var ip = IPAddress.Parse(p.Address);
+            var host = ip.Equals(IPAddress.Any) ? IPAddress.Loopback : ip.Equals(IPAddress.IPv6Any) ? IPAddress.IPv6Loopback : ip;
+            return new UriBuilder("https", host.ToString(), p.Port).Uri;
+        }).Distinct().OrderBy(u => u.Port is 8010 or 8086 ? 0 : 1).ThenBy(u => u.Port).ToArray();
+    }
+
+    public static IReadOnlyList<string> CertificateNames()
+    {
+        var network = IPGlobalProperties.GetIPGlobalProperties();
+        var fqdn = string.IsNullOrEmpty(network.DomainName) || network.HostName.EndsWith("." + network.DomainName, StringComparison.OrdinalIgnoreCase)
+            ? network.HostName : network.HostName + "." + network.DomainName;
+        return new[] { Environment.MachineName, fqdn }.Concat(NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == OperationalStatus.Up).SelectMany(n => n.GetIPProperties().UnicastAddresses)
+            .Select(a => a.Address).Where(a => !a.IsIPv6LinkLocal && !a.IsIPv6Multicast && !a.Equals(IPAddress.Any) && !a.Equals(IPAddress.IPv6Any))
+            .Select(a => a.ToString())).Where(h => Uri.CheckHostName(h) != UriHostNameType.Unknown)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static bool IsReferenceExecutable(string path) => Path.GetFileName(path).Equals("RefSrv.exe", StringComparison.OrdinalIgnoreCase) && File.Exists(path);

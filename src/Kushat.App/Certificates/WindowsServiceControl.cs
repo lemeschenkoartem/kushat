@@ -16,25 +16,27 @@ public static class WindowsServiceControl
         return (ReferenceServiceState)status.CurrentState;
     }
 
-    public static async Task RequireDefinitionAsync(LocalReferenceServer server)
+    public static async Task RequireDefinitionAsync(LocalReferenceServer server, CancellationToken cancellationToken = default)
     {
         if (server.ServiceName is null) throw new InvalidOperationException("У этого RefSrv не найдена служба Windows.");
-        var definitions = await WindowsReferenceDiscovery.FindAsync();
+        var definitions = await WindowsReferenceDiscovery.FindAsync(cancellationToken);
         if (!definitions.Any(d => d.ServiceName == server.ServiceName && d.ExePath.Equals(server.ExePath, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("Определение службы изменилось. Повторите поиск.");
     }
 
-    public static async Task StopAsync(LocalReferenceServer server)
+    public static async Task StopAsync(LocalReferenceServer server, CancellationToken cancellationToken = default)
     {
-        await RequireDefinitionAsync(server);
+        await RequireDefinitionAsync(server, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         using var manager = Manager(); using var service = Service(manager, server.ServiceName!, 4 | 32);
         if (State(server.ServiceName!) == ReferenceServiceState.Stopped) return;
         if (!ControlService(service, 1, out _)) throw new Win32Exception(Marshal.GetLastWin32Error());
     }
 
-    public static async Task StartAsync(LocalReferenceServer server)
+    public static async Task StartAsync(LocalReferenceServer server, CancellationToken cancellationToken = default)
     {
-        await RequireDefinitionAsync(server);
+        await RequireDefinitionAsync(server, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         using var manager = Manager(); using var service = Service(manager, server.ServiceName!, 4 | 16);
         if (State(server.ServiceName!) == ReferenceServiceState.Running) return;
         if (!StartService(service, 0, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());

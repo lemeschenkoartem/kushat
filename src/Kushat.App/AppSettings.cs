@@ -22,6 +22,7 @@ public sealed class AppSettings
     public string? ActiveProfileId { get; set; }
     public string? PrinterName { get; set; }
     public string TemplateId { get; set; } = "classic";
+    public LabelOrientation LabelOrientation { get; set; } = LabelOrientation.Portrait;
     public WeightPriceMode WeightPriceMode { get; set; } = WeightPriceMode.Both;
     [JsonIgnore] public ConnectionProfile? ActiveProfile => Profiles.FirstOrDefault(p => p.Id == ActiveProfileId);
 
@@ -35,6 +36,7 @@ public sealed class AppSettings
         ActiveProfileId = active?.Id;
         if (active is not null) Connection = active.Connection;
         TemplateId = LabelTemplates.Find(TemplateId).Id;
+        if (!Enum.IsDefined(LabelOrientation)) LabelOrientation = LabelOrientation.Portrait;
         if (!Enum.IsDefined(WeightPriceMode)) WeightPriceMode = WeightPriceMode.Both;
     }
 

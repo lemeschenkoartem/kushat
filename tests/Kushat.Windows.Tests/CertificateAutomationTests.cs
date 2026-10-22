@@ -28,6 +28,29 @@ public class CertificateAutomationTests
     }
 
     [Fact]
+    public void AutomaticHttpsCandidatesUseOnlySelectedProcessListenersAndRespectBindAddress()
+    {
+        var server = new LocalReferenceServer("C:\\Test\\RefSrv.exe", "Reference", 123, [8010, 9000],
+            [new(123, 8010, "0.0.0.0"), new(123, 9000, "192.168.7.2"), new(123, 8010, "::"), new(456, 9000, "192.168.7.100"), new(123, 9999, "127.0.0.1")]);
+        var candidates = WindowsReferenceDiscovery.HttpsCandidates(server);
+        Assert.Contains(new Uri("https://127.0.0.1:8010"), candidates);
+        Assert.Contains(new Uri("https://[::1]:8010"), candidates);
+        Assert.Contains(new Uri("https://192.168.7.2:9000"), candidates);
+        Assert.All(candidates, u => Assert.Contains(u.Port, server.Ports));
+        Assert.DoesNotContain(candidates, u => u.Host == "192.168.7.100" || u.Port == 9999);
+    }
+
+    [Fact]
+    public void LocalCertificateNamesIncludeThisComputerWithoutPromptingForIp()
+    {
+        var names = WindowsReferenceDiscovery.CertificateNames();
+        Assert.Contains(Environment.MachineName, names, StringComparer.OrdinalIgnoreCase);
+        var generated = LocalCertificate.Create(DateTimeOffset.UtcNow, Environment.MachineName, names);
+        using var cert = X509Certificate2.CreateFromPem(generated.Pem);
+        Assert.All(names, name => Assert.True(cert.MatchesHostname(name, false, false), name));
+    }
+
+    [Fact]
     public void NativePrepareInstallAndRollbackKeepDefaultPemAndRespectFilePermissions()
     {
         var root = Path.Combine(Path.GetTempPath(), "kushat-native-cert-" + Guid.NewGuid().ToString("N"));

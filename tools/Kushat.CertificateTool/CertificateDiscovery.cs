@@ -51,6 +51,18 @@ public static class CertificateDiscovery
         return result;
     }
 
+    public static CertificateFile CurrentFile(IEnumerable<CertificateFile> files, string keysDirectory, string? presentedFingerprint = null)
+    {
+        var local = files.Where(f => string.Equals(System.IO.Path.GetDirectoryName(f.Path), keysDirectory, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (presentedFingerprint is not null)
+            return local.FirstOrDefault(f => f.Sha256.Equals(presentedFingerprint, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidDataException("Сертификат работающего RefSrv не найден в выбранном каталоге httpKeys.");
+        var custom = System.IO.Path.Combine(keysDirectory, "mylocal.pem");
+        var expected = File.Exists(custom) ? custom : System.IO.Path.Combine(keysDirectory, "default.pem");
+        return local.FirstOrDefault(f => f.Path.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidDataException("Не удалось прочитать сертификат: " + expected + ". Запустите мастер от администратора.");
+    }
+
     public static string? MatchKeysDirectory(IEnumerable<CertificateFile> files, string fingerprint)
     {
         var matches = files.Where(f => f.Sha256.Equals(fingerprint, StringComparison.OrdinalIgnoreCase))

@@ -65,4 +65,51 @@ public class CertificateWizardProgressTests
         Assert.Throws<InvalidOperationException>(() => state.CompleteExisting(Report(ready: false)));
         state.CompleteExisting(Report()); Assert.Equal(CertificateWizardStep.Complete, state.Step);
     }
+    [Theory]
+    [InlineData(-10, -1)]
+    [InlineData(-10, 0)]
+    [InlineData(1, 10)]
+    public void ExpiredOrNotYetValidLocalCertificateCannotReachFinish(int fromDays, int untilDays)
+    {
+        var now = DateTime.UtcNow;
+        var state = new CertificateWizardProgress();
+        Assert.Throws<InvalidOperationException>(() => state.CompleteLocalCertificate(now.AddDays(fromDays), now.AddDays(untilDays), now));
+        Assert.Equal(CertificateWizardStep.Inspect, state.Step);
+    }
+
+    [Fact]
+    public void ValidLocalCertificateCanFinishWithoutEnteringAnAddressOrPort()
+    {
+        var now = DateTime.UtcNow; var state = new CertificateWizardProgress();
+        state.CompleteLocalCertificate(now.AddDays(-1), now.AddDays(1), now);
+        Assert.Equal(CertificateWizardStep.Complete, state.Step);
+        state.Back(); Assert.Equal(CertificateWizardStep.Inspect, state.Step);
+    }
+
+    [Fact]
+    public void BackAfterInstallationPreservesRecordedWorkAndCannotFinishWithoutRecheckingLaunch()
+    {
+        var state = new CertificateWizardProgress();
+        Assert.False(state.CanGoBack); Assert.Throws<InvalidOperationException>(state.Back);
+        state.Prepared("new"); state.ObserveStopped(true, false, false); state.Installed();
+        state.Back(); Assert.Equal(CertificateWizardStep.StopServer, state.Step); Assert.True(state.CertificateInstalled);
+        state.Back(); Assert.Equal(CertificateWizardStep.Inspect, state.Step);
+        Assert.Throws<InvalidOperationException>(() => state.Prepared("different"));
+        state.ContinueInstalled(); Assert.Equal(CertificateWizardStep.StopServer, state.Step);
+        state.ContinueInstalled(); Assert.Equal(CertificateWizardStep.StartServer, state.Step);
+        Assert.Throws<InvalidOperationException>(state.Complete);
+        state.ObserveStarted(true, true, Report()); state.Complete(); state.Back();
+        Assert.Equal(CertificateWizardStep.StartServer, state.Step); Assert.False(state.CanContinue);
+        Assert.Throws<InvalidOperationException>(state.Complete);
+    }
+
+    [Fact]
+    public void BackBeforeInstallationDoesNotRecordAnyCertificateChange()
+    {
+        var state = new CertificateWizardProgress(); state.Prepared("first"); state.Back();
+        Assert.False(state.CertificateInstalled); Assert.Equal(CertificateWizardStep.Inspect, state.Step);
+        Assert.Throws<InvalidOperationException>(state.ContinueInstalled);
+        state.Prepared("second"); Assert.Equal("second", state.ExpectedFingerprint);
+    }
+
 }

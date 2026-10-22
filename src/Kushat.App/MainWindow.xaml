@@ -61,13 +61,15 @@
      <TextBlock Text="Шаблон ценника" Margin="0,0,0,8"/>
      <ComboBox x:Name="TemplateBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="TemplateChanged" MinHeight="34"/>
      <TextBlock x:Name="TemplateDescription" TextWrapping="Wrap" Foreground="#526170" Margin="0,8,0,8"/>
+     <TextBlock Text="Ориентация ценника" Margin="0,0,0,8"/>
+     <ComboBox x:Name="OrientationBox" MinHeight="34" SelectedValuePath="Tag" SelectionChanged="OrientationChanged" Margin="0,0,0,12"/>
      <TextBlock Text="Цена весовых товаров" Margin="0,0,0,8"/>
      <ComboBox x:Name="WeightPriceBox" MinHeight="34" SelectedValuePath="Tag" SelectionChanged="WeightPriceChanged" Margin="0,0,0,12"/>
      <Border Background="#F4F6F8" Padding="8" Margin="0,0,0,8">
       <Viewbox x:Name="TemplatePreview" Height="160" Stretch="Uniform"/>
      </Border>
-     <TextBlock Text="Образец оформления · 100 × 140 мм" Foreground="#526170" FontSize="12" Margin="0,0,0,16"/>
-     <TextBlock Text="А4 · книжная ориентация&#10;Масштаб 100% · без подгонки&#10;Размер ценника: 100 × 140 мм" TextWrapping="Wrap" Foreground="#526170" LineHeight="23"/>
+     <TextBlock x:Name="PreviewSizeText" Text="Образец оформления · 100 × 140 мм" Foreground="#526170" FontSize="12" Margin="0,0,0,16"/>
+     <TextBlock x:Name="PrintFormatText" Text="А4 · книжная ориентация&#10;Масштаб 100% · без подгонки&#10;Размер ценника: 100 × 140 мм" TextWrapping="Wrap" Foreground="#526170" LineHeight="23"/>
      <Separator Margin="0,20"/>
      <TextBlock x:Name="SummaryText" FontSize="16" TextWrapping="Wrap" LineHeight="26"/>
      <TextBlock Text="В печать попадут все отмеченные товары, включая скрытые поиском." TextWrapping="Wrap" Foreground="#526170" Margin="0,12,0,20"/>

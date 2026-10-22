@@ -45,7 +45,8 @@ public sealed class LoginWindow : Window
         var checkButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) };
         var checkServer = new Button { Content = "Проверить порт и сертификат" };
         var certificates = new Button { Content = "Мастер сертификата…" };
-        checkButtons.Children.Add(checkServer); checkButtons.Children.Add(certificates); panel.Children.Add(checkButtons);
+        var importCertificate = new Button { Content = "Доверие из .cer…" };
+        checkButtons.Children.Add(checkServer); checkButtons.Children.Add(certificates); checkButtons.Children.Add(importCertificate); panel.Children.Add(checkButtons);
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) };
         panel.Children.Add(new ScrollViewer { Content = status, MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         var copyError = new Button { Content = "Скопировать ошибку", Visibility = Visibility.Collapsed,
@@ -85,12 +86,34 @@ public sealed class LoginWindow : Window
 
         CancellationTokenSource? pending = null;
         var closeRequested = false;
-        certificates.Click += (_, _) => CertificateToolsLauncher.OpenFrom(this, address.Text);
+        certificates.Click += (_, _) => CertificateToolsLauncher.OpenFrom(this);
+        importCertificate.Click += async (_, _) =>
+        {
+            if (pending is not null) return;
+            pending = new CancellationTokenSource();
+            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = importCertificate.IsEnabled = address.IsEnabled = profiles.IsEnabled =
+                login.IsEnabled = password.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = false;
+            try
+            {
+                var report = await CertificateClientTrust.ImportAsync(this, address.Text, pending.Token);
+                if (report is not null) { ServerReport = report; status.Text = report.Text + "\nДоверие настроено."; }
+            }
+            catch (OperationCanceledException) { status.Text = "Проверка отменена."; }
+            catch (Exception ex) when (ex is ArgumentException or System.IO.IOException or CryptographicException or UnauthorizedAccessException or InvalidOperationException)
+            { status.Text = ConnectionDiagnostics.Describe(ex); copyError.Visibility = Visibility.Visible; }
+            finally
+            {
+                pending.Dispose(); pending = null;
+                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = importCertificate.IsEnabled = address.IsEnabled = profiles.IsEnabled =
+                    login.IsEnabled = password.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = true;
+                if (closeRequested) { password.Clear(); DialogResult = false; }
+            }
+        };
         checkServer.Click += async (_, _) =>
         {
             if (pending is not null) return;
             pending = new CancellationTokenSource();
-            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = profiles.IsEnabled =
+            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = importCertificate.IsEnabled = address.IsEnabled = profiles.IsEnabled =
                 login.IsEnabled = password.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = false;
             status.Text = "Проверяем доступность порта и сертификат…";
             try
@@ -104,7 +127,7 @@ public sealed class LoginWindow : Window
             finally
             {
                 pending.Dispose(); pending = null;
-                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = profiles.IsEnabled =
+                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = importCertificate.IsEnabled = address.IsEnabled = profiles.IsEnabled =
                     login.IsEnabled = password.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = true;
                 if (closeRequested) { password.Clear(); DialogResult = false; }
             }
@@ -119,7 +142,7 @@ public sealed class LoginWindow : Window
         {
             if (pending is not null) return;
             pending = new CancellationTokenSource();
-            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
+            connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = importCertificate.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
                 profiles.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = false;
             status.Text = "Проверка входа и чтение меню…"; copyError.Visibility = Visibility.Collapsed;
             var success = false;
@@ -145,7 +168,7 @@ public sealed class LoginWindow : Window
             finally
             {
                 pending.Dispose(); pending = null;
-                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
+                connect.IsEnabled = checkServer.IsEnabled = certificates.IsEnabled = importCertificate.IsEnabled = address.IsEnabled = login.IsEnabled = password.IsEnabled =
                     profiles.IsEnabled = newProfile.IsEnabled = name.IsEnabled = remember.IsEnabled = true;
                 if (closeRequested) { Password = ""; Catalog = null; password.Clear(); DialogResult = false; }
                 else if (success) { password.Clear(); DialogResult = true; }

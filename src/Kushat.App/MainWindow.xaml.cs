@@ -49,6 +49,9 @@ public partial class MainWindow : Window
         WeightPriceBox.Items.Add(new ComboBoxItem { Content = "Только за 1 кг", Tag = WeightPriceMode.Kilogram });
         WeightPriceBox.Items.Add(new ComboBoxItem { Content = "Только за 100 г", Tag = WeightPriceMode.HundredGrams });
         WeightPriceBox.SelectedValue = settings.WeightPriceMode;
+        OrientationBox.Items.Add(new ComboBoxItem { Content = "Вертикальный · 100 × 140 мм", Tag = LabelOrientation.Portrait });
+        OrientationBox.Items.Add(new ComboBoxItem { Content = "Горизонтальный · 140 × 100 мм", Tag = LabelOrientation.Landscape });
+        OrientationBox.SelectedValue = settings.LabelOrientation;
         LoadPrinters(); UpdateSummary();
         Loaded += AutoConnectLoaded;
     }
@@ -122,7 +125,7 @@ public partial class MainWindow : Window
     {
         RefreshButton.IsEnabled = DemoButton.IsEnabled = ProductsGrid.IsEnabled =
             ConnectButton.IsEnabled = PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled =
-            PreviewButton.IsEnabled = PrintButton.IsEnabled = CertificatesButton.IsEnabled = !busy;
+            PreviewButton.IsEnabled = PrintButton.IsEnabled = CertificatesButton.IsEnabled = OrientationBox.IsEnabled = !busy;
         LogoutButton.IsEnabled = !busy && !string.IsNullOrEmpty(credential);
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -262,7 +265,7 @@ public partial class MainWindow : Window
     }
 
     private void ReloadPrintersClick(object sender, RoutedEventArgs e) => LoadPrinters();
-    private void CertificatesClick(object sender, RoutedEventArgs e) => CertificateToolsLauncher.OpenFrom(this, settings.Connection.ServerAddress);
+    private void CertificatesClick(object sender, RoutedEventArgs e) => CertificateToolsLauncher.OpenFrom(this);
     private void PrinterChanged(object sender, SelectionChangedEventArgs e)
     { if (PrinterBox.SelectedItem is string name) { settings.PrinterName = name; SaveSettings(); } }
 
@@ -281,8 +284,20 @@ public partial class MainWindow : Window
         settings.WeightPriceMode = mode; UpdateTemplatePreview(); SaveSettings();
     }
 
-    private void UpdateTemplatePreview() => TemplatePreview.Child = LabelDocument.CreateLabel(
-        new Product("sample", "Салат Оливье", 850m), false, LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode);
+    private void OrientationChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (OrientationBox.SelectedValue is not LabelOrientation orientation) return;
+        settings.LabelOrientation = orientation; UpdateTemplatePreview(); SaveSettings();
+    }
+
+    private void UpdateTemplatePreview()
+    {
+        TemplatePreview.Child = LabelDocument.CreateLabel(new Product("sample", "Салат Оливье", 850m), false,
+            LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode, settings.LabelOrientation);
+        var size = LabelLayout.Geometry(settings.LabelOrientation);
+        PreviewSizeText.Text = $"Образец оформления · {size.LabelWidthMm} × {size.LabelHeightMm} мм";
+        PrintFormatText.Text = $"А4 · {(settings.LabelOrientation == LabelOrientation.Landscape ? "альбомная" : "книжная")} ориентация\nМасштаб 100% · без подгонки\nРазмер ценника: {size.LabelWidthMm} × {size.LabelHeightMm} мм";
+    }
 
     private FixedDocument BuildDocument()
     {
@@ -291,7 +306,7 @@ public partial class MainWindow : Window
             if (!r.TryQuantity(out var quantity)) throw new ArgumentException("Исправьте количество у товара «" + r.Name + "».");
             return new LabelOrder(r.Product, quantity);
         });
-        return LabelDocument.Create(LabelLayout.Create(orders), demo, LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode);
+        return LabelDocument.Create(LabelLayout.Create(orders), demo, LabelTemplates.Find(settings.TemplateId), settings.WeightPriceMode, settings.LabelOrientation);
     }
 
     private void PreviewClick(object sender, RoutedEventArgs e)

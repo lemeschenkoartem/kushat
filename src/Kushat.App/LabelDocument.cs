@@ -13,19 +13,20 @@ public static class LabelDocument
 {
     public static double Mm(double mm) => mm * 96 / 25.4;
 
-    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, WeightPriceMode weightPriceMode = WeightPriceMode.Both)
+    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, WeightPriceMode weightPriceMode = WeightPriceMode.Both, LabelOrientation orientation = LabelOrientation.Portrait)
     {
         var document = new FixedDocument();
-        var size = new Size(Mm(LabelLayout.PageWidthMm), Mm(LabelLayout.PageHeightMm));
+        var geometry = LabelLayout.Geometry(orientation);
+        var size = new Size(Mm(geometry.PageWidthMm), Mm(geometry.PageHeightMm));
         document.DocumentPaginator.PageSize = size;
         foreach (var page in pages)
         {
             var visual = new FixedPage { Width = size.Width, Height = size.Height, Background = Brushes.White };
             foreach (var slot in page.Slots)
             {
-                var label = CreateLabel(slot.Product, demo, template, weightPriceMode);
-                FixedPage.SetLeft(label, Mm(LabelLayout.LeftMm + slot.Column * LabelLayout.LabelWidthMm));
-                FixedPage.SetTop(label, Mm(LabelLayout.TopMm + slot.Row * LabelLayout.LabelHeightMm));
+                var label = CreateLabel(slot.Product, demo, template, weightPriceMode, orientation);
+                FixedPage.SetLeft(label, Mm(geometry.LeftMm + slot.Column * geometry.LabelWidthMm));
+                FixedPage.SetTop(label, Mm(geometry.TopMm + slot.Row * geometry.LabelHeightMm));
                 visual.Children.Add(label);
             }
             var content = new PageContent();
@@ -35,10 +36,12 @@ public static class LabelDocument
         return document;
     }
 
-    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, WeightPriceMode weightPriceMode = WeightPriceMode.Both)
+    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, WeightPriceMode weightPriceMode = WeightPriceMode.Both, LabelOrientation orientation = LabelOrientation.Portrait)
     {
         if (!product.CanPrint) throw new ArgumentException("Не определена единица товара: " + product.Name);
         template ??= LabelTemplates.All[0];
+        var geometry = LabelLayout.Geometry(orientation);
+        var horizontal = orientation == LabelOrientation.Landscape;
         var prices = LabelPrices.For(product, weightPriceMode, template.Style == LabelStyle.LargeHundredGrams);
         var accent = new SolidColorBrush(Color.FromRgb(33, 92, 69));
         var chalk = template.Style == LabelStyle.Chalkboard;
@@ -59,7 +62,7 @@ public static class LabelDocument
             VerticalAlignment = VerticalAlignment.Center
         };
         // Fit the complete name into a reserved area; no ellipsis or silent clipping.
-        var nameSize = new Size(Mm(84) - 1, Mm(48));
+        var nameSize = horizontal ? new Size(Mm(58), Mm(43)) : new Size(Mm(84) - 1, Mm(48));
         while (true)
         {
             name.Measure(new Size(nameSize.Width, double.PositiveInfinity));
@@ -115,9 +118,21 @@ public static class LabelDocument
                 Foreground = chalk ? Brushes.White : Brushes.Firebrick, TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
             Grid.SetRow(note, 4); grid.Children.Add(note);
         }
+        if (horizontal)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetRowSpan(name, 3); name.Margin = new Thickness(0, 0, Mm(4), 0);
+            foreach (var element in grid.Children.OfType<FrameworkElement>().Where(e => e != name))
+            {
+                var row = Grid.GetRow(element);
+                if (row is 0 or 4) Grid.SetColumnSpan(element, 2);
+                else { Grid.SetColumn(element, 1); Grid.SetRow(element, row - 1); element.VerticalAlignment = VerticalAlignment.Center; }
+            }
+        }
         return new Border
         {
-            Width = Mm(LabelLayout.LabelWidthMm), Height = Mm(LabelLayout.LabelHeightMm),
+            Width = Mm(geometry.LabelWidthMm), Height = Mm(geometry.LabelHeightMm),
             Background = chalk ? new SolidColorBrush(Color.FromRgb(22, 22, 22)) : Brushes.White,
             CornerRadius = chalk ? new CornerRadius(Mm(3)) : new CornerRadius(0),
             BorderThickness = new Thickness(template.Style == LabelStyle.Cafe ? 1.2 : 0.5),
@@ -156,25 +171,29 @@ public static class LabelDocument
             ?? throw new InvalidOperationException("Выбранный принтер больше не установлен. Обновите список принтеров.");
         var ticket = queue.DefaultPrintTicket ?? new PrintTicket();
         ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
-        ticket.PageOrientation = PageOrientation.Portrait;
+        var horizontal = document.DocumentPaginator.PageSize.Width > document.DocumentPaginator.PageSize.Height;
+        var orientation = horizontal ? LabelOrientation.Landscape : LabelOrientation.Portrait;
+        var geometry = LabelLayout.Geometry(orientation);
+        var pageOrientation = horizontal ? PageOrientation.Landscape : PageOrientation.Portrait;
+        ticket.PageOrientation = pageOrientation;
         ticket.PageScalingFactor = 100;
         ticket.CopyCount = 1;
         ticket.PagesPerSheet = 1;
         ticket.Duplexing = Duplexing.OneSided;
         var validated = queue.MergeAndValidatePrintTicket(queue.DefaultPrintTicket, ticket).ValidatedPrintTicket;
         if (validated.PageMediaSize?.PageMediaSizeName != PageMediaSizeName.ISOA4 ||
-            validated.PageOrientation != PageOrientation.Portrait ||
+            validated.PageOrientation != pageOrientation ||
             validated.PageScalingFactor is not (null or 100) ||
             validated.PagesPerSheet is not (null or 1) || validated.CopyCount is not (null or 1) ||
             validated.Duplexing is not (null or Duplexing.OneSided))
-            throw new InvalidOperationException("Драйвер не подтвердил А4, книжную ориентацию и масштаб 100%. Проверьте параметры принтера.");
+            throw new InvalidOperationException("Драйвер не подтвердил А4, выбранную ориентацию и масштаб 100%. Проверьте параметры принтера.");
         var area = queue.GetPrintCapabilities(validated).PageImageableArea
             ?? throw new InvalidOperationException("Драйвер принтера не сообщил область печати.");
         const double toMm = 25.4 / 96;
         if (!LabelLayout.FitsImageableArea(area.OriginWidth * toMm, area.OriginHeight * toMm,
-            area.ExtentWidth * toMm, area.ExtentHeight * toMm))
-            throw new InvalidOperationException("Поля этого принтера не позволяют разместить четыре ценника 100 × 140 мм на А4. Нужны поля слева/справа не более 5 мм и сверху/снизу не более 8,5 мм. Выберите другой принтер или режим печати А4 с меньшими полями.");
+            area.ExtentWidth * toMm, area.ExtentHeight * toMm, orientation))
+            throw new InvalidOperationException($"Поля принтера не позволяют разместить четыре ценника {geometry.LabelWidthMm} × {geometry.LabelHeightMm} мм на А4. Нужны поля слева/справа не более {geometry.LeftMm} мм и сверху/снизу не более {geometry.TopMm} мм.");
         var dialog = new PrintDialog { PrintQueue = queue, PrintTicket = validated };
-        dialog.PrintDocument(document.DocumentPaginator, "Кушать — ценники 100 × 140 мм");
+        dialog.PrintDocument(document.DocumentPaginator, $"Кушать — ценники {geometry.LabelWidthMm} × {geometry.LabelHeightMm} мм");
     }
 }

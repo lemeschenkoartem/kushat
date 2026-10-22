@@ -6,7 +6,7 @@ namespace Kushat.CertificateTool;
 
 public static class LocalCertificate
 {
-    public static (string Pem, byte[] PublicCertificate) Create(DateTimeOffset now, string host = "rk7.local")
+    public static (string Pem, byte[] PublicCertificate) Create(DateTimeOffset now, string host = "rk7.local", IEnumerable<string>? additionalHosts = null)
     {
         if (Uri.CheckHostName(host) == UriHostNameType.Unknown || host.Contains('*'))
             throw new ArgumentException("Укажите IP или DNS-имя без протокола и порта.", nameof(host));
@@ -16,16 +16,15 @@ public static class LocalCertificate
         var request = new CertificateRequest(subject.Build(), key,
             HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         var names = new SubjectAlternativeNameBuilder();
-        names.AddDnsName("rk7.local");
-        names.AddDnsName("localhost");
-        names.AddIpAddress(IPAddress.Loopback);
-        names.AddIpAddress(IPAddress.IPv6Loopback);
-        if (IPAddress.TryParse(host, out var address))
+        var hosts = new[] { "rk7.local", "localhost", "127.0.0.1", "::1", host }
+            .Concat(additionalHosts ?? []).Distinct(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in hosts)
         {
-            if (!address.Equals(IPAddress.Loopback) && !address.Equals(IPAddress.IPv6Loopback))
-                names.AddIpAddress(address);
+            if (Uri.CheckHostName(name) == UriHostNameType.Unknown || name.Contains('*'))
+                throw new ArgumentException("Некорректное имя или IP компьютера: " + name);
+            if (IPAddress.TryParse(name, out var address)) names.AddIpAddress(address);
+            else names.AddDnsName(name);
         }
-        else if (host is not ("rk7.local" or "localhost")) names.AddDnsName(host);
         request.CertificateExtensions.Add(names.Build());
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(

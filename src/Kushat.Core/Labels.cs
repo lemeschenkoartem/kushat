@@ -20,6 +20,10 @@ public sealed record LabelOrder(Product Product, int Quantity);
 public sealed record LabelSlot(Product Product, int Row, int Column);
 public sealed record LabelPage(IReadOnlyList<LabelSlot> Slots);
 
+public enum LabelOrientation { Portrait, Landscape }
+
+public sealed record LabelGeometry(double PageWidthMm, double PageHeightMm, double LabelWidthMm, double LabelHeightMm, double LeftMm, double TopMm);
+
 public static class LabelLayout
 {
     public const int MaxQuantity = 999;
@@ -50,11 +54,19 @@ public static class LabelLayout
             new LabelSlot(p, i / 2, i % 2)).ToArray())).ToArray();
     }
 
-    public static bool FitsImageableArea(double x, double y, double width, double height)
+    public static LabelGeometry Geometry(LabelOrientation orientation = LabelOrientation.Portrait) => orientation switch
+    {
+        LabelOrientation.Portrait => new(210, 297, 100, 140, 5, 8.5),
+        LabelOrientation.Landscape => new(297, 210, 140, 100, 8.5, 5),
+        _ => throw new ArgumentException("Неизвестная ориентация ценника.")
+    };
+
+    public static bool FitsImageableArea(double x, double y, double width, double height, LabelOrientation orientation = LabelOrientation.Portrait)
     {
         const double tolerance = 0.2;
-        return x <= LeftMm + tolerance && y <= TopMm + tolerance &&
-            x + width >= LeftMm + 2 * LabelWidthMm - tolerance &&
-            y + height >= TopMm + 2 * LabelHeightMm - tolerance;
+        var geometry = Geometry(orientation);
+        return x <= geometry.LeftMm + tolerance && y <= geometry.TopMm + tolerance &&
+            x + width >= geometry.LeftMm + 2 * geometry.LabelWidthMm - tolerance &&
+            y + height >= geometry.TopMm + 2 * geometry.LabelHeightMm - tolerance;
     }
 }
