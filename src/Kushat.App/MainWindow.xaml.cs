@@ -82,15 +82,12 @@ public partial class MainWindow : Window
     {
         var materialized = products.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
         menuBrowser = new MenuBrowser(groups ?? catalog?.MenuGroups ?? [], materialized);
-        using (view.DeferRefresh())
+        foreach (var row in rows) row.PropertyChanged -= RowChanged;
+        rows.Clear();
+        foreach (var product in materialized)
         {
-            foreach (var row in rows) row.PropertyChanged -= RowChanged;
-            rows.Clear();
-            foreach (var product in materialized)
-            {
-                var row = new ProductRow(product);
-                row.PropertyChanged += RowChanged; rows.Add(row);
-            }
+            var row = new ProductRow(product);
+            row.PropertyChanged += RowChanged; rows.Add(row);
         }
         MenuTree.ItemsSource = new[] { menuBrowser.Root };
         MenuNoticeText.Text = catalog?.GroupWarning ?? (menuBrowser.HasIncompleteHierarchy
