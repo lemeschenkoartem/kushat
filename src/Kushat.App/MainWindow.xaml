@@ -72,7 +72,14 @@
  <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Ширина, мм" Margin="0,0,0,7"/><TextBox x:Name="LabelWidthBox" TextChanged="DimensionsChanged"/></StackPanel><StackPanel Grid.Column="2"><TextBlock Text="Высота, мм" Margin="0,0,0,7"/><TextBox x:Name="LabelHeightBox" TextChanged="DimensionsChanged"/></StackPanel></Grid>
  <Button Content="Поменять ширину и высоту" Click="SwapDimensionsClick" Margin="0,8,0,8"/>
  <TextBlock x:Name="FormatErrorText" Foreground="#B8404C" TextWrapping="Wrap" Margin="0,0,0,8"/>
- <TextBlock Text="Название своего шаблона" Margin="0,0,0,7"/><TextBox x:Name="PresetNameBox" MaxLength="80"/><Button Content="Сохранить шаблон" Click="SavePresetClick" Margin="0,8,0,8"/>
+ <TextBlock Text="Размер шрифта, пт" FontWeight="SemiBold" Margin="0,8,0,8"/>
+ <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+ <StackPanel><TextBlock Text="Название" Margin="0,0,0,7"/><ComboBox x:Name="NameFontBox" IsEditable="True" IsTextSearchEnabled="False" StaysOpenOnEdit="True" ToolTip="Размер названия в пунктах, как в Word. Можно ввести своё значение."/></StackPanel>
+ <StackPanel Grid.Column="2"><TextBlock Text="Цена" Margin="0,0,0,7"/><ComboBox x:Name="PriceFontBox" IsEditable="True" IsTextSearchEnabled="False" StaysOpenOnEdit="True" ToolTip="Размер цены в пунктах, как в Word. Можно ввести своё значение."/></StackPanel>
+ </Grid>
+ <TextBlock Text="Выберите размер или введите свой. «Авто» — подгонка по шаблону." Style="{StaticResource MutedText}" Margin="0,8,0,8"/>
+ <TextBlock x:Name="FontErrorText" Foreground="#B8404C" TextWrapping="Wrap" Margin="0,0,0,8"/>
+ <TextBlock Text="Название своего шаблона" Margin="0,0,0,7"/><TextBox x:Name="PresetNameBox" MaxLength="80"/><Button x:Name="SavePresetButton" Content="Сохранить шаблон" Click="SavePresetClick" Margin="0,8,0,8"/>
  <TextBlock x:Name="PresetStatusText" Style="{StaticResource MutedText}"/><TextBlock Text="Весовые — за 100 г. Штучные — за штуку." Style="{StaticResource MutedText}" Margin="0,8,0,0"/>
  </StackPanel></local:SmoothExpander>
  <local:SmoothExpander x:Name="AppearanceSettings" Header="Оформление программы"><ComboBox x:Name="ThemeBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ThemeChanged"/></local:SmoothExpander>

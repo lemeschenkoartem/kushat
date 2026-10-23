@@ -7,5 +7,6 @@ public sealed class LabelPreset
     public string TemplateId { get; set; } = "classic";
     public double WidthMm { get; set; } = 100;
     public double HeightMm { get; set; } = 140;
+    public LabelFontSizes FontSizes { get; set; } = new();
     public string DisplayName => $"{Name} · {WidthMm:0.##} × {HeightMm:0.##} мм";
 }

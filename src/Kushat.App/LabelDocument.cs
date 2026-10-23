@@ -16,8 +16,9 @@ public static class LabelDocument
 
     public static double Mm(double mm) => mm * 96 / 25.4;
 
-    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait, LabelGeometry? layout = null)
+    public static FixedDocument Create(IReadOnlyList<LabelPage> pages, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait, LabelGeometry? layout = null, LabelFontSizes? fontSizes = null)
     {
+        (fontSizes ?? new()).Validate();
         var document = new FixedDocument();
         var geometry = layout ?? LabelLayout.Geometry(orientation);
         document.SetValue(GeometryProperty, geometry);
@@ -29,7 +30,7 @@ public static class LabelDocument
             foreach (var slot in page.Slots)
             {
                 if (slot.Row < 0 || slot.Row >= geometry.Rows || slot.Column < 0 || slot.Column >= geometry.Columns) throw new ArgumentException("Ценник выходит за пределы листа.");
-                var label = CreateLabel(slot.Product, demo, template, orientation, geometry);
+                var label = CreateLabel(slot.Product, demo, template, orientation, geometry, fontSizes);
                 FixedPage.SetLeft(label, Mm(geometry.LeftMm + slot.Column * geometry.LabelWidthMm));
                 FixedPage.SetTop(label, Mm(geometry.TopMm + slot.Row * geometry.LabelHeightMm));
                 visual.Children.Add(label);
@@ -41,23 +42,24 @@ public static class LabelDocument
         return document;
     }
 
-    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait, LabelGeometry? layout = null)
+    public static Border CreateLabel(Product product, bool demo, LabelTemplate? template = null, LabelOrientation orientation = LabelOrientation.Portrait, LabelGeometry? layout = null, LabelFontSizes? fontSizes = null)
     {
         if (!product.CanPrint) throw new ArgumentException("Не определена единица товара: " + product.Name);
+        fontSizes ??= new(); fontSizes.Validate();
         template ??= LabelTemplates.All[0];
         var geometry = layout ?? LabelLayout.Geometry(orientation);
         var scale = Math.Min(geometry.LabelWidthMm / 100, geometry.LabelHeightMm / 100);
         if (Math.Abs(scale - 1) > 0.000001)
         {
             var design = geometry with { LabelWidthMm = geometry.LabelWidthMm / scale, LabelHeightMm = geometry.LabelHeightMm / scale };
-            var inner = CreateDesignLabel(product, demo, template, design);
+            var inner = CreateDesignLabel(product, demo, template, design, fontSizes, scale);
             return new Border { Width = Mm(geometry.LabelWidthMm), Height = Mm(geometry.LabelHeightMm), Background = inner.Background,
                 Child = new Viewbox { Stretch = Stretch.Uniform, Child = inner } };
         }
-        return CreateDesignLabel(product, demo, template, geometry);
+        return CreateDesignLabel(product, demo, template, geometry, fontSizes, 1);
     }
 
-    private static Border CreateDesignLabel(Product product, bool demo, LabelTemplate template, LabelGeometry geometry)
+    private static Border CreateDesignLabel(Product product, bool demo, LabelTemplate template, LabelGeometry geometry, LabelFontSizes fontSizes, double scale)
     {
         var prices = LabelPrices.For(product, WeightPriceMode.HundredGrams);
         var accent = new SolidColorBrush(Color.FromRgb(33, 92, 69));
@@ -70,7 +72,7 @@ public static class LabelDocument
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var name = new TextBlock
         {
-            Text = product.Name, FontSize = 30, FontWeight = FontWeights.SemiBold,
+            Text = product.Name, FontSize = fontSizes.NamePt is { } namePt ? namePt * 96 / 72 / scale : 30, FontWeight = FontWeights.SemiBold,
             TextWrapping = TextWrapping.Wrap,
             Foreground = chalk ? Brushes.White : Brushes.Black,
             FontFamily = chalk ? new FontFamily("Georgia") : new FontFamily("Segoe UI"),
@@ -80,26 +82,36 @@ public static class LabelDocument
         };
         // Fit the complete name into a reserved area; no ellipsis or silent clipping.
         var headerMm = template.Style == LabelStyle.Cafe ? 24 : template.Style == LabelStyle.Accent ? 14 : 0;
-        var priceFont = template.Style switch { LabelStyle.LargeHundredGrams => 64, LabelStyle.Chalkboard => 56, LabelStyle.Accent => 42, _ => 48 };
+        var priceFont = fontSizes.PricePt is { } pricePt ? pricePt * 96 / 72 / scale : template.Style switch { LabelStyle.LargeHundredGrams => 64, LabelStyle.Chalkboard => 56, LabelStyle.Accent => 42, _ => 48 };
         var priceMm = priceFont * 1.4 * 25.4 / 96 + 11 + (template.Style == LabelStyle.LargeHundredGrams ? 6 : 0);
-        var nameHeightMm = Math.Min(48, geometry.LabelHeightMm - 16 - headerMm - priceMm - (demo ? 8 : 0) - 7);
+        var availableNameMm = geometry.LabelHeightMm - 16 - headerMm - priceMm - (demo ? 8 : 0) - 7;
+        if (availableNameMm <= 0) throw FontDoesNotFit(product);
+        var nameHeightMm = fontSizes.NamePt is null ? Math.Min(48, availableNameMm) : availableNameMm;
         var nameSize = new Size(Mm(geometry.LabelWidthMm - 16) - 3, Mm(nameHeightMm));
         while (true)
         {
             name.Measure(new Size(nameSize.Width, double.PositiveInfinity));
-            if (name.DesiredSize.Height <= nameSize.Height) break;
+            if (name.DesiredSize.Height <= nameSize.Height && name.DesiredSize.Width <= nameSize.Width + 0.1) break;
+            if (fontSizes.NamePt is not null) throw FontDoesNotFit(product);
             if (name.FontSize <= 12)
                 throw new ArgumentException("Наименование товара слишком длинное для ценника: " + product.Name);
             name.FontSize -= 1;
+        }
+        if (fontSizes.PricePt is not null)
+        {
+            var amount = new TextBlock { Text = AmountText(prices.Primary.Amount), FontSize = priceFont, FontWeight = FontWeights.Bold,
+                FontFamily = chalk ? new FontFamily("Georgia") : new FontFamily("Segoe UI"), FontStyle = chalk ? FontStyles.Italic : FontStyles.Normal };
+            amount.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (amount.DesiredSize.Width > nameSize.Width - (template.Style == LabelStyle.LargeHundredGrams ? Mm(6) : 0)) throw FontDoesNotFit(product);
         }
         Grid.SetRow(name, 1); grid.Children.Add(name);
         switch (template.Style)
         {
             case LabelStyle.Classic:
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 48);
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, priceFont, exact: fontSizes.PricePt is not null);
                 break;
             case LabelStyle.LargeHundredGrams:
-                var price = PricePanel(prices.Primary.Title, prices.Primary.Amount, 64);
+                var price = PricePanel(prices.Primary.Title, prices.Primary.Amount, priceFont, exact: fontSizes.PricePt is not null);
                 var highlight = new Border { Background = new SolidColorBrush(Color.FromRgb(238, 246, 240)),
                     CornerRadius = new CornerRadius(7), Padding = new Thickness(Mm(3)), Child = price };
                 Grid.SetRow(highlight, 2); grid.Children.Add(highlight);
@@ -109,10 +121,10 @@ public static class LabelDocument
                     Margin = new Thickness(0, 0, 0, Mm(4)), Child = new TextBlock { Text = "ЦЕННИК", FontSize = 14,
                         FontWeight = FontWeights.SemiBold, Foreground = Brushes.White } };
                 grid.Children.Add(stripe);
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 42);
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, priceFont, exact: fontSizes.PricePt is not null);
                 break;
             case LabelStyle.Chalkboard:
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 56, Brushes.White, new FontFamily("Georgia"));
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, priceFont, Brushes.White, new FontFamily("Georgia"), fontSizes.PricePt is not null);
                 break;
             case LabelStyle.Cafe:
                 var awning = new UniformGrid { Rows = 1, Columns = 14, Height = Mm(9) };
@@ -124,7 +136,7 @@ public static class LabelDocument
                 header.Children.Add(new TextBlock { Text = "ЦЕННИК", Foreground = Brushes.Black, FontSize = 18, FontWeight = FontWeights.SemiBold,
                     TextAlignment = TextAlignment.Center, Margin = new Thickness(0, Mm(3), 0, 0) });
                 grid.Children.Add(header);
-                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, 48);
+                AddPrice(grid, 2, prices.Primary.Title, prices.Primary.Amount, priceFont, exact: fontSizes.PricePt is not null);
                 break;
             default: throw new ArgumentException("Неизвестный шаблон ценника.");
         }
@@ -145,24 +157,28 @@ public static class LabelDocument
         };
     }
 
-    private static StackPanel PricePanel(string title, decimal price, double fontSize, Brush? foreground = null, FontFamily? family = null)
+    private static ArgumentException FontDoesNotFit(Product product) => new("Выбранный размер шрифта не помещается на ценнике «" + product.Name + "». Уменьшите шрифт, увеличьте ценник или выберите «Авто».");
+
+    private static string AmountText(decimal price) => price.ToString("N2", CultureInfo.GetCultureInfo("ru-RU")) + " ₽";
+
+    private static StackPanel PricePanel(string title, decimal price, double fontSize, Brush? foreground = null, FontFamily? family = null, bool exact = false)
     {
         var panel = new StackPanel();
         panel.Children.Add(new TextBlock { Text = title, FontSize = 15,
             TextAlignment = TextAlignment.Center, Foreground = foreground ?? Brushes.DimGray });
-        // Shrink unusually long prices, keeping the physical label size unchanged.
-        panel.Children.Add(new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly,
-            Height = fontSize * 1.4, Child = new TextBlock {
-                Text = price.ToString("N2", CultureInfo.GetCultureInfo("ru-RU")) + " ₽",
-                FontSize = fontSize, FontWeight = FontWeights.Bold, TextAlignment = TextAlignment.Center,
-                Foreground = foreground ?? Brushes.Black, FontFamily = family ?? new FontFamily("Segoe UI"),
-                FontStyle = family is null ? FontStyles.Normal : FontStyles.Italic } });
+        var amount = new TextBlock { Text = AmountText(price), FontSize = fontSize, FontWeight = FontWeights.Bold,
+            TextAlignment = TextAlignment.Center, Foreground = foreground ?? Brushes.Black,
+            FontFamily = family ?? new FontFamily("Segoe UI"), FontStyle = family is null ? FontStyles.Normal : FontStyles.Italic };
+        // Manual point sizes remain exact; automatic templates can shrink long prices.
+        if (exact) panel.Children.Add(amount);
+        else panel.Children.Add(new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly,
+            Height = fontSize * 1.4, Child = amount });
         return panel;
     }
 
-    private static void AddPrice(Grid grid, int row, string title, decimal price, double fontSize, Brush? foreground = null, FontFamily? family = null)
+    private static void AddPrice(Grid grid, int row, string title, decimal price, double fontSize, Brush? foreground = null, FontFamily? family = null, bool exact = false)
     {
-        var panel = PricePanel(title, price, fontSize, foreground, family);
+        var panel = PricePanel(title, price, fontSize, foreground, family, exact);
         panel.Margin = new Thickness(0, Mm(5), 0, 0);
         Grid.SetRow(panel, row); grid.Children.Add(panel);
     }

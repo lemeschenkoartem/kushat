@@ -36,6 +36,8 @@ public partial class MainWindow : Window
 
     private bool initializing = true;
     private LabelGeometry? labelGeometry;
+    private LabelFontSizes? fontSizes = new();
+    private readonly DependencyPropertyDescriptor fontTextDescriptor = DependencyPropertyDescriptor.FromProperty(ComboBox.TextProperty, typeof(ComboBox));
     public MainWindow() : this(null, true) { }
     internal MainWindow(AppSettings? initialSettings, bool loadPrinters)
     {
@@ -54,6 +56,12 @@ public partial class MainWindow : Window
         TemplateBox.SelectedValue = settings.TemplateId;
         LabelWidthBox.Text = settings.LabelWidthMm!.Value.ToString("0.##", CultureInfo.CurrentCulture);
         LabelHeightBox.Text = settings.LabelHeightMm!.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        string[] sizes = ["Авто", "8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24", "26", "28", "36", "48", "72"];
+        NameFontBox.ItemsSource = PriceFontBox.ItemsSource = sizes;
+        fontSizes = settings.FontSizes;
+        NameFontBox.Text = FontSizeText(fontSizes.NamePt); PriceFontBox.Text = FontSizeText(fontSizes.PricePt);
+        fontTextDescriptor.AddValueChanged(NameFontBox, FontSizeChanged);
+        fontTextDescriptor.AddValueChanged(PriceFontBox, FontSizeChanged);
         PresetBox.ItemsSource = settings.LabelPresets.ToArray(); PresetBox.SelectedValue = settings.ActiveLabelPresetId;
         PresetNameBox.Text = settings.LabelPresets.FirstOrDefault(p => p.Id == settings.ActiveLabelPresetId)?.Name ?? "";
         ThemeBox.ItemsSource = ThemeManager.All; ThemeBox.SelectedValue = settings.ThemeId;
@@ -166,7 +174,8 @@ public partial class MainWindow : Window
         RefreshButton.IsEnabled = ProductsGrid.IsEnabled = ConnectButton.IsEnabled = MenuTree.IsEnabled =
             PriceTypeBox.IsEnabled = SelectButton.IsEnabled = ClearButton.IsEnabled = !busy;
         PrinterSettings.IsEnabled = LabelSettings.IsEnabled = !busy;
-        PreviewButton.IsEnabled = PrintButton.IsEnabled = !busy && labelGeometry is not null;
+        PreviewButton.IsEnabled = PrintButton.IsEnabled = !busy && labelGeometry is not null && fontSizes is not null;
+        SavePresetButton.IsEnabled = !busy && labelGeometry is not null && fontSizes is not null;
         LogoutButton.IsEnabled = !busy && !string.IsNullOrEmpty(credential);
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -324,7 +333,7 @@ public partial class MainWindow : Window
             FormatErrorText.Text = ""; SaveSettings();
         }
         catch (ArgumentException ex) { labelGeometry = null; FormatErrorText.Text = ex.Message; }
-        PreviewButton.IsEnabled = PrintButton.IsEnabled = labelGeometry is not null && loading is null;
+        UpdatePrintAvailability();
         UpdateTemplatePreview(); UpdateSummary();
     }
     private void SwapDimensionsClick(object sender, RoutedEventArgs e)
@@ -338,7 +347,8 @@ public partial class MainWindow : Window
         try
         {
             var geometry = labelGeometry ?? throw new ArgumentException("Сначала исправьте размер ценника.");
-            var preset = settings.SaveLabelPreset(PresetNameBox.Text, settings.TemplateId, geometry.LabelWidthMm, geometry.LabelHeightMm);
+            var fonts = fontSizes ?? throw new ArgumentException("Сначала исправьте размер шрифта.");
+            var preset = settings.SaveLabelPreset(PresetNameBox.Text, settings.TemplateId, geometry.LabelWidthMm, geometry.LabelHeightMm, fonts);
             initializing = true; PresetBox.ItemsSource = settings.LabelPresets.ToArray(); PresetBox.SelectedValue = preset.Id; initializing = false;
             PresetStatusText.Text = SaveSettings() ? "Шаблон сохранён. Он доступен при следующем запуске." : "Шаблон выбран для текущего сеанса.";
         }
@@ -352,8 +362,26 @@ public partial class MainWindow : Window
         TemplateBox.SelectedValue = preset.TemplateId; PresetNameBox.Text = preset.Name;
         LabelWidthBox.Text = preset.WidthMm.ToString("0.##", CultureInfo.CurrentCulture);
         LabelHeightBox.Text = preset.HeightMm.ToString("0.##", CultureInfo.CurrentCulture);
+        fontSizes = settings.FontSizes = preset.FontSizes;
+        NameFontBox.Text = FontSizeText(fontSizes.NamePt); PriceFontBox.Text = FontSizeText(fontSizes.PricePt);
+        FontErrorText.Text = "";
         initializing = false; ApplyDimensions();
     }
+    private static string FontSizeText(double? points) => points?.ToString("0.##", CultureInfo.CurrentCulture) ?? "Авто";
+    private void FontSizeChanged(object? sender, EventArgs e)
+    {
+        if (initializing) return;
+        ClearActivePreset();
+        try
+        {
+            fontSizes = new LabelFontSizes(LabelFontSizes.Parse(NameFontBox.Text), LabelFontSizes.Parse(PriceFontBox.Text));
+            settings.FontSizes = fontSizes; FontErrorText.Text = ""; SaveSettings();
+        }
+        catch (ArgumentException ex) { fontSizes = null; FontErrorText.Text = ex.Message; }
+        UpdatePrintAvailability(); UpdateTemplatePreview();
+    }
+    private void UpdatePrintAvailability() => SavePresetButton.IsEnabled = PreviewButton.IsEnabled = PrintButton.IsEnabled =
+        labelGeometry is not null && fontSizes is not null && loading is null;
     private void ThemeChanged(object sender, SelectionChangedEventArgs e)
     {
         if (initializing || ThemeBox.SelectedItem is not UiTheme theme) return;
@@ -364,12 +392,13 @@ public partial class MainWindow : Window
     {
         if (initializing || TemplatePreview is null) return;
         if (labelGeometry is null) { TemplatePreview.Child = null; PreviewSizeText.Text = "Укажите допустимый размер ценника."; return; }
+        if (fontSizes is null) { TemplatePreview.Child = null; PreviewSizeText.Text = "Укажите допустимый размер шрифта."; return; }
         var product = (ProductsGrid.SelectedItem as ProductRow)?.Product;
         if (product?.CanPrint != true) product = rows.FirstOrDefault(r => r.IsSelected && r.CanPrint)?.Product ?? view?.Cast<ProductRow>().FirstOrDefault(r => r.CanPrint)?.Product;
         product ??= new Product("sample", "Название товара", 145m, SaleUnit.Piece);
         try
         {
-            TemplatePreview.Child = LabelDocument.CreateLabel(product, false, LabelTemplates.Find(settings.TemplateId), layout: labelGeometry);
+            TemplatePreview.Child = LabelDocument.CreateLabel(product, false, LabelTemplates.Find(settings.TemplateId), layout: labelGeometry, fontSizes: fontSizes);
             PreviewSizeText.Text = $"{labelGeometry.LabelWidthMm:0.##} × {labelGeometry.LabelHeightMm:0.##} мм · {labelGeometry.Capacity} на А4 · 100%";
         }
         catch (ArgumentException ex) { TemplatePreview.Child = null; PreviewSizeText.Text = ex.Message; }
@@ -387,14 +416,15 @@ public partial class MainWindow : Window
         MenuColumn.MaxWidth = stacked ? 180 : 300;
     }
 
-    private FixedDocument BuildDocument()
+    internal FixedDocument BuildDocument()
     {
+        if (fontSizes is null) throw new ArgumentException("Исправьте размер шрифта.");
         var orders = rows.Where(r => r.IsSelected).Select(r =>
         {
             if (!r.TryQuantity(out var quantity)) throw new ArgumentException("Исправьте количество у товара «" + r.Name + "».");
             return new LabelOrder(r.Product, quantity);
         });
-        return LabelDocument.Create(LabelLayout.Create(orders, labelGeometry ?? throw new ArgumentException("Исправьте размер ценника.")), demo, LabelTemplates.Find(settings.TemplateId), layout: labelGeometry);
+        return LabelDocument.Create(LabelLayout.Create(orders, labelGeometry ?? throw new ArgumentException("Исправьте размер ценника.")), demo, LabelTemplates.Find(settings.TemplateId), layout: labelGeometry, fontSizes: fontSizes);
     }
 
     private void PreviewClick(object sender, RoutedEventArgs e)
@@ -442,6 +472,8 @@ public partial class MainWindow : Window
     {
         if (loading is not null)
         { loading.Cancel(); e.Cancel = true; StatusText.Text = "Отмена загрузки… После завершения закройте окно ещё раз."; return; }
+        fontTextDescriptor.RemoveValueChanged(NameFontBox, FontSizeChanged);
+        fontTextDescriptor.RemoveValueChanged(PriceFontBox, FontSizeChanged);
         credential = ""; http.Dispose();
     }
 }

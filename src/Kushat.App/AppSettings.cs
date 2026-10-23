@@ -23,6 +23,7 @@ public sealed class AppSettings
     public string? PrinterName { get; set; }
     public string TemplateId { get; set; } = "classic";
     public LabelOrientation LabelOrientation { get; set; } = LabelOrientation.Portrait;
+    public LabelFontSizes FontSizes { get; set; } = new();
     public string ThemeId { get; set; } = "mint";
     public double? LabelWidthMm { get; set; }
     public double? LabelHeightMm { get; set; }
@@ -42,6 +43,7 @@ public sealed class AppSettings
         if (active is not null) Connection = active.Connection;
         TemplateId = LabelTemplates.Find(TemplateId).Id;
         if (!Enum.IsDefined(LabelOrientation)) LabelOrientation = LabelOrientation.Portrait;
+        FontSizes = LabelFontSizes.Normalize(FontSizes);
         ThemeId = ThemeId is "mint" or "indigo" or "graphite" ? ThemeId : "mint";
         var defaults = LabelLayout.Geometry(LabelOrientation);
         try { LabelLayout.Geometry(LabelWidthMm ?? defaults.LabelWidthMm, LabelHeightMm ?? defaults.LabelHeightMm); }
@@ -51,20 +53,26 @@ public sealed class AppSettings
         LabelPresets = LabelPresets.Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Id) && !string.IsNullOrWhiteSpace(p.Name))
             .Where(p => { try { LabelLayout.Geometry(p.WidthMm, p.HeightMm); return true; } catch (ArgumentException) { return false; } })
             .DistinctBy(p => p.Id).ToList();
-        foreach (var preset in LabelPresets) preset.TemplateId = LabelTemplates.Find(preset.TemplateId).Id;
+        foreach (var preset in LabelPresets)
+        {
+            preset.TemplateId = LabelTemplates.Find(preset.TemplateId).Id;
+            preset.FontSizes = LabelFontSizes.Normalize(preset.FontSizes);
+        }
         if (!LabelPresets.Any(p => p.Id == ActiveLabelPresetId)) ActiveLabelPresetId = null;
         WeightPriceMode = WeightPriceMode.HundredGrams; // Migrate old kg/both preferences to the current single-price templates.
     }
 
-    public LabelPreset SaveLabelPreset(string name, string templateId, double widthMm, double heightMm)
+    public LabelPreset SaveLabelPreset(string name, string templateId, double widthMm, double heightMm, LabelFontSizes? fontSizes = null)
     {
+        fontSizes ??= FontSizes;
+        fontSizes.Validate();
         name = name.Trim();
         if (name.Length is < 1 or > 80) throw new ArgumentException("Укажите название шаблона: от 1 до 80 символов.");
         LabelLayout.Geometry(widthMm, heightMm);
         var preset = LabelPresets.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (preset is null) { preset = new LabelPreset(); LabelPresets.Add(preset); }
-        preset.Name = name; preset.TemplateId = LabelTemplates.Find(templateId).Id; preset.WidthMm = widthMm; preset.HeightMm = heightMm;
-        ActiveLabelPresetId = preset.Id; TemplateId = preset.TemplateId; LabelWidthMm = widthMm; LabelHeightMm = heightMm;
+        preset.Name = name; preset.TemplateId = LabelTemplates.Find(templateId).Id; preset.WidthMm = widthMm; preset.HeightMm = heightMm; preset.FontSizes = fontSizes;
+        ActiveLabelPresetId = preset.Id; TemplateId = preset.TemplateId; LabelWidthMm = widthMm; LabelHeightMm = heightMm; FontSizes = fontSizes;
         return preset;
     }
 

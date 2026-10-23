@@ -300,6 +300,100 @@ public class WindowsBehaviorTests
         });
     }
 
+    public static IEnumerable<object[]> FontTemplatesAndSizes() =>
+        from template in LabelTemplates.All
+        from size in new[] { (100d,140d), (140d,100d), (80d,50d) }
+        select new object[] { template.Id, size.Item1, size.Item2 };
+
+    [Theory]
+    [MemberData(nameof(FontTemplatesAndSizes))]
+    public void ManualWordPointSizesStayPhysicalAcrossTemplatesAndLabelDimensions(string template,double width,double height)
+    {
+        Sta(() =>
+        {
+            var geometry=LabelLayout.Geometry(width,height);
+            var label=LabelDocument.CreateLabel(new("1","Салат с зеленью",145,SaleUnit.Piece),false,LabelTemplates.Find(template),layout:geometry,fontSizes:new(10.5,18.5));
+            AssertPhysicalPoints(label,"Салат с зеленью",10.5);
+            AssertPhysicalPoints(label,"145,00 ₽",18.5);
+            foreach(var block in LogicalChildren(label).OfType<TextBlock>())
+            {
+                var bounds=block.TransformToAncestor(label).TransformBounds(new Rect(new Point(),block.RenderSize));
+                Assert.True(bounds.Left>=-0.5 && bounds.Top>=-0.5 && bounds.Right<=label.ActualWidth+0.5 && bounds.Bottom<=label.ActualHeight+0.5,$"Manual font clipped in {template} {width}×{height}: {block.Text}: {bounds}");
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(1638,18)] [InlineData(10,1638)] [InlineData(0,18)]
+    public void ManualFontsThatCannotFitAreRejectedBeforeAnyPrinting(double namePt,double pricePt)
+    {
+        Sta(() => Assert.Throws<ArgumentException>(()=>LabelDocument.CreateLabel(new("1","Товар",145,SaleUnit.Piece),false,fontSizes:new(namePt,pricePt))));
+    }
+
+    [Fact]
+    public void LongPriceIsNotSilentlyShrunkWhenPointSizeWasChosenManually()
+    {
+        Sta(()=>Assert.Throws<ArgumentException>(()=>LabelDocument.CreateLabel(new("1","Товар",123456789123456789m,SaleUnit.Piece),false,fontSizes:new(10,36))));
+    }
+
+    [Fact]
+    public void WordStyleFontFieldsUpdatePreviewPrintDocumentAndSavedPreset()
+    {
+        Sta(() =>
+        {
+            var settings=new AppSettings(); settings.Normalize(); settings.SaveLabelPreset("Мой","classic",80,50);
+            var window=new MainWindow(settings,false);
+            try
+            {
+                window.AcceptCatalog(new ReferenceCatalog([new("3","Основной")],[new("1","Салат",new Dictionary<string,decimal>{{"3",145}},SaleUnit.Piece)]),null);
+                var rows=((System.ComponentModel.ICollectionView)((DataGrid)window.FindName("ProductsGrid")).ItemsSource).Cast<ProductRow>();
+                rows.Single().IsSelected=true;
+                window.Show(); ((SmoothExpander)window.FindName("LabelSettings")).IsExpanded=true; PumpFor(TimeSpan.FromMilliseconds(260));
+                var name=(ComboBox)window.FindName("NameFontBox"); var price=(ComboBox)window.FindName("PriceFontBox");
+                Assert.Equal("Авто",name.Text); Assert.True(name.IsEditable);
+                name.SelectedItem="16"; window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                Assert.Equal(16d,settings.FontSizes.NamePt);
+                var editor=Assert.IsType<TextBox>(name.Template.FindName("PART_EditableTextBox",name));
+                editor.Text="18,5"; window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                Assert.Equal(18.5d,settings.FontSizes.NamePt);
+                price.Text="20";
+                var sample=Assert.IsType<Border>(((Viewbox)window.FindName("TemplatePreview")).Child);
+                AssertPhysicalPoints(sample,"Салат",18.5); AssertPhysicalPoints(sample,"145,00 ₽",20);
+                var document=window.BuildDocument();
+                var printed=Assert.Single(document.Pages[0].Child.Children.OfType<Border>());
+                AssertPhysicalPoints(printed,"Салат",18.5); AssertPhysicalPoints(printed,"145,00 ₽",20);
+                var save=(Button)window.FindName("SavePresetButton");
+                save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var saved=Assert.Single(settings.LabelPresets); Assert.Equal(new LabelFontSizes(18.5,20),saved.FontSizes);
+                price.Text="bad"; Assert.False(((Button)window.FindName("PrintButton")).IsEnabled); Assert.False(save.IsEnabled);
+                Assert.Throws<ArgumentException>(()=>window.BuildDocument());
+                price.Text="Авто"; Assert.True(((Button)window.FindName("PrintButton")).IsEnabled);
+                ((ComboBox)window.FindName("PresetBox")).SelectedValue=saved.Id;
+                Assert.Equal(new LabelFontSizes(18.5,20),settings.FontSizes);
+                Assert.Equal("20",price.Text);
+                AssertPhysicalPoints(Assert.IsType<Border>(((Viewbox)window.FindName("TemplatePreview")).Child),"145,00 ₽",20);
+                if(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is {} workspace)
+                {
+                    name.BringIntoView(); window.UpdateLayout();
+                    var image=new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); image.Render(window);
+                    var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder(); encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                    var directory=System.IO.Path.Combine(workspace,"artifacts","ui"); System.IO.Directory.CreateDirectory(directory);
+                    using var file=System.IO.File.Create(System.IO.Path.Combine(directory,"word-font-controls.png")); encoder.Save(file);
+                }
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    private static void AssertPhysicalPoints(Border label,string text,double points)
+    {
+        label.Measure(new Size(label.Width,label.Height)); label.Arrange(new Rect(0,0,label.Width,label.Height)); label.UpdateLayout();
+        var block=LogicalChildren(label).OfType<TextBlock>().Single(t=>t.Text==text);
+        var transform=block.TransformToAncestor(label);
+        var scale=transform.Transform(new Point(1,0)).X-transform.Transform(new Point(0,0)).X;
+        Assert.Equal(points,block.FontSize*scale*72/96,4);
+    }
+
     [Fact]
     public void ExcessivelyLongNameIsRejectedRatherThanSilentlyTruncated()
     {
