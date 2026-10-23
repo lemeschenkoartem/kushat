@@ -355,6 +355,21 @@ public class WindowsBehaviorTests
                 var presetBox=(ComboBox)window.FindName("PresetBox");
                 Assert.Contains(VisualChildren(templateBox).OfType<TextBlock>(),b=>b.Text=="Классический");
                 Assert.Contains(VisualChildren(presetBox).OfType<TextBlock>(),b=>b.Text==settings.LabelPresets.Single().DisplayName);
+                templateBox.BringIntoView(); window.UpdateLayout(); templateBox.IsDropDownOpen=true;
+                window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                foreach(var template in LabelTemplates.All)
+                {
+                    var item=Assert.IsType<ComboBoxItem>(templateBox.ItemContainerGenerator.ContainerFromItem(template));
+                    var text=VisualChildren(item).OfType<TextBlock>().Select(b=>b.Text).ToArray();
+                    Assert.Contains(template.Name,text);
+                    Assert.DoesNotContain(text,t=>t.Contains("Label") || t.Contains("Style =") || t.Contains("TemplateId"));
+                }
+                templateBox.IsDropDownOpen=false;
+                presetBox.IsDropDownOpen=true;
+                window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                var savedItem=Assert.IsType<ComboBoxItem>(presetBox.ItemContainerGenerator.ContainerFromItem(settings.LabelPresets.Single()));
+                Assert.Contains(VisualChildren(savedItem).OfType<TextBlock>(),b=>b.Text==settings.LabelPresets.Single().DisplayName);
+                presetBox.IsDropDownOpen=false;
                 name.SelectedItem="16"; window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 Assert.Equal(16d,settings.FontSizes.NamePt);
                 var editor=Assert.IsType<TextBox>(name.Template.FindName("PART_EditableTextBox",name));

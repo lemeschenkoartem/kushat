@@ -2,7 +2,10 @@ namespace Kushat.Core;
 
 public enum LabelStyle { Classic, LargeHundredGrams, Accent, Chalkboard, Cafe }
 
-public sealed record LabelTemplate(string Id, string Name, string Description, LabelStyle Style);
+public sealed record LabelTemplate(string Id, string Name, string Description, LabelStyle Style)
+{
+    public override string ToString() => Name;
+}
 
 public static class LabelTemplates
 {

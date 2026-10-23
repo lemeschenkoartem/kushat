@@ -22,6 +22,21 @@ public class LabelFontSizeTests
     public void InvalidInputCannotBecomeAPrintSize(string text) => Assert.Throws<ArgumentException>(() => LabelFontSizes.Parse(text));
 
     [Fact]
+    public void BuiltInAndSavedTemplateDisplayNeverExposesProgrammingNames()
+    {
+        foreach(var template in LabelTemplates.All)
+        {
+            Assert.Equal(template.Name,template.ToString());
+            Assert.Matches(@"\p{IsCyrillic}",template.ToString());
+            Assert.DoesNotMatch("[A-Za-z]",template.ToString());
+            Assert.DoesNotMatch("[A-Za-z]",template.Description);
+        }
+        var preset=new LabelPreset {Name="Мой ценник",TemplateId="chalkboard",WidthMm=80,HeightMm=50};
+        Assert.Equal(preset.DisplayName,preset.ToString());
+        Assert.Equal("Мой ценник · 80 × 50 мм",preset.ToString());
+    }
+
+    [Fact]
     public void PointSizesSurviveSettingsAndPresetSerializationWithoutOverwritingOtherPresets()
     {
         var settings = new AppSettings(); settings.Normalize();
