@@ -351,6 +351,10 @@ public class WindowsBehaviorTests
                 window.Show(); ((SmoothExpander)window.FindName("LabelSettings")).IsExpanded=true; PumpFor(TimeSpan.FromMilliseconds(260));
                 var name=(ComboBox)window.FindName("NameFontBox"); var price=(ComboBox)window.FindName("PriceFontBox");
                 Assert.Equal("Авто",name.Text); Assert.True(name.IsEditable);
+                var templateBox=(ComboBox)window.FindName("TemplateBox");
+                var presetBox=(ComboBox)window.FindName("PresetBox");
+                Assert.Contains(VisualChildren(templateBox).OfType<TextBlock>(),b=>b.Text=="Классический");
+                Assert.Contains(VisualChildren(presetBox).OfType<TextBlock>(),b=>b.Text==settings.LabelPresets.Single().DisplayName);
                 name.SelectedItem="16"; window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 Assert.Equal(16d,settings.FontSizes.NamePt);
                 var editor=Assert.IsType<TextBox>(name.Template.FindName("PART_EditableTextBox",name));
@@ -407,6 +411,15 @@ public class WindowsBehaviorTests
         {
             yield return child;
             foreach (var descendant in LogicalChildren(child)) yield return descendant;
+        }
+    }
+
+    private static IEnumerable<DependencyObject> VisualChildren(DependencyObject item)
+    {
+        for(var i=0;i<VisualTreeHelper.GetChildrenCount(item);i++)
+        {
+            var child=VisualTreeHelper.GetChild(item,i); yield return child;
+            foreach(var descendant in VisualChildren(child)) yield return descendant;
         }
     }
 
